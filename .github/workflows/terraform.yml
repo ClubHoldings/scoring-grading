@@ -54,14 +54,26 @@ jobs:
     environment: ${{ (github.base_ref || github.ref_name) == 'dev' && 'dev' || 'prod-plan' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check account is configured
+        id: cfg
+        run: |
+          if [ -z "${{ vars.AWS_ACCOUNT_ID }}" ]; then
+            echo "::notice::AWS_ACCOUNT_ID not set for this environment yet; skipping."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: hashicorp/setup-terraform@v3
+        if: steps.cfg.outputs.ready == 'true'
         with:
           terraform_version: 1.15.8
       - uses: aws-actions/configure-aws-credentials@v4
+        if: steps.cfg.outputs.ready == 'true'
         with:
           role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/scoring-grading-${{ env.TARGET }}-tf-plan
           aws-region: ${{ vars.AWS_REGION }}
       - name: init and plan
+        if: steps.cfg.outputs.ready == 'true'
         working-directory: infra/terraform/live/${{ env.TARGET }}
         env:
           TF_VAR_account_id: ${{ vars.AWS_ACCOUNT_ID }}
@@ -74,6 +86,7 @@ jobs:
           terraform plan -input=false -lock-timeout=5m -out=tfplan
           terraform show -no-color tfplan > plan.txt
       - uses: actions/upload-artifact@v4
+        if: steps.cfg.outputs.ready == 'true'
         with:
           name: plan-${{ env.TARGET }}
           path: infra/terraform/live/${{ env.TARGET }}/plan.txt
@@ -89,14 +102,26 @@ jobs:
     environment: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check account is configured
+        id: cfg
+        run: |
+          if [ -z "${{ vars.AWS_ACCOUNT_ID }}" ]; then
+            echo "::notice::AWS_ACCOUNT_ID not set for this environment yet; skipping."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: hashicorp/setup-terraform@v3
+        if: steps.cfg.outputs.ready == 'true'
         with:
           terraform_version: 1.15.8
       - uses: aws-actions/configure-aws-credentials@v4
+        if: steps.cfg.outputs.ready == 'true'
         with:
           role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/scoring-grading-${{ github.ref_name }}-tf-apply
           aws-region: ${{ vars.AWS_REGION }}
       - name: init, plan and apply
+        if: steps.cfg.outputs.ready == 'true'
         working-directory: infra/terraform/live/${{ github.ref_name }}
         env:
           TF_VAR_account_id: ${{ vars.AWS_ACCOUNT_ID }}

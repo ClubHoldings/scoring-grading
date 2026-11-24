@@ -42,6 +42,4 @@ def home(
     **overrides: Any,
 ) -> HomeRecord:
     """Home with sample text and photos."""
-    return HomeRecord(
-        home_id, text_fields(**overrides), tuple(photo(p) for p in photo_ids)
-    )
+    return HomeRecord(home_id, text_fields(**overrides), tuple(photo(p) for p in photo_ids))

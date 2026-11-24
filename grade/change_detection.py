@@ -103,9 +103,7 @@ class RunVersions:
         """
         missing = [s.value for s in Step if not self.prompts.get(s, "").strip()]
         if missing:
-            raise InvalidVersionsError(
-                f"prompt version missing for: {', '.join(missing)}"
-            )
+            raise InvalidVersionsError(f"prompt version missing for: {', '.join(missing)}")
         if not self.rubric.strip() or not self.model.strip():
             raise InvalidVersionsError("rubric and model versions must not be empty")
 
@@ -138,9 +136,7 @@ class Fingerprint:
     prompt_versions: Mapping[str, str]
 
     @classmethod
-    def build(
-        cls, home_id: str, hashes: HomeHashes, versions: RunVersions
-    ) -> Fingerprint:
+    def build(cls, home_id: str, hashes: HomeHashes, versions: RunVersions) -> Fingerprint:
         """Combine fresh hashes with the pinned versions of this run.
 
         Args:
@@ -334,9 +330,7 @@ def _decide(fresh: Fingerprint, stored: Fingerprint | None) -> Decision:
         The verdict, including which steps rerun and which photos need labels.
     """
     if stored is None:
-        return _decision(
-            fresh, Status.NEW, [Reason.FIRST_SEEN], Step, fresh.photo_hashes
-        )
+        return _decision(fresh, Status.NEW, [Reason.FIRST_SEEN], Step, fresh.photo_hashes)
 
     reasons: set[Reason] = set()
     steps: set[Step] = set()

@@ -31,9 +31,7 @@ class InMemoryFingerprintStore:
         Raises:
             StoredFingerprintError: a stored row is corrupt.
         """
-        return {
-            h: Fingerprint.from_dict(self._rows[h]) for h in home_ids if h in self._rows
-        }
+        return {h: Fingerprint.from_dict(self._rows[h]) for h in home_ids if h in self._rows}
 
     def put_many(self, fingerprints: Iterable[Fingerprint]) -> None:
         """Store fingerprints, replacing earlier ones of the same home.

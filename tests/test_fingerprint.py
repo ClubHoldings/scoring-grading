@@ -72,19 +72,13 @@ def test_zero_and_false_are_values_not_missing() -> None:
 
 
 def test_numeric_types_with_same_value_agree() -> None:
-    assert (
-        text_hash({"n": 3})
-        == text_hash({"n": 3.0})
-        == text_hash({"n": Decimal("3.00")})
-    )
+    assert text_hash({"n": 3}) == text_hash({"n": 3.0}) == text_hash({"n": Decimal("3.00")})
     assert text_hash({"n": 1.5}) == text_hash({"n": Decimal("1.50")})
     assert text_hash({"n": 3}) != text_hash({"n": "3"})
     assert text_hash({"n": 1.5}) != text_hash({"n": 2.5})
 
 
-@pytest.mark.parametrize(
-    "bad", [float("nan"), float("inf"), Decimal("NaN"), Decimal("Infinity")]
-)
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), Decimal("NaN"), Decimal("Infinity")])
 def test_non_finite_numbers_rejected(bad: object) -> None:
     with pytest.raises(InvalidHomeRecordError):
         text_hash({"n": bad})
@@ -100,9 +94,7 @@ def test_multi_valued_fields_are_unordered_and_deduplicated() -> None:
         {"amenities": ("Kitchen", " Wifi ")}
     )
     assert text_hash({"amenities": {"Wifi"}}) == text_hash({"amenities": ["Wifi"]})
-    assert text_hash({"amenities": ["Wifi"]}) != text_hash(
-        {"amenities": ["Wifi", "Pool"]}
-    )
+    assert text_hash({"amenities": ["Wifi"]}) != text_hash({"amenities": ["Wifi", "Pool"]})
 
 
 def test_nested_mapping_key_order_does_not_matter() -> None:

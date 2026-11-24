@@ -19,9 +19,7 @@ from grade.fingerprint import HomeRecord, PhotoRef, Step
 from grade.fingerprint_store import InMemoryFingerprintStore
 from tests.sample_homes import home, photo
 
-V1 = RunVersions(
-    "r1", "m1", {Step.SEMANTIC: "ps1", Step.VISION: "pv1", Step.MATCH: "pm1"}
-)
+V1 = RunVersions("r1", "m1", {Step.SEMANTIC: "ps1", Step.VISION: "pv1", Step.MATCH: "pm1"})
 
 
 def _versions(
@@ -61,8 +59,7 @@ def test_second_run_on_same_data_is_all_unchanged() -> None:
     assert [d.status for d in report.decisions] == [Status.UNCHANGED] * 2
     assert report.to_evaluate == ()
     assert all(
-        d.steps == () and d.photos_to_label == () and not d.reasons
-        for d in report.decisions
+        d.steps == () and d.photos_to_label == () and not d.reasons for d in report.decisions
     )
 
 
@@ -77,9 +74,7 @@ def test_sample_batch_mixes_new_changed_unchanged() -> None:
 
 def test_whitespace_only_edit_stays_unchanged() -> None:
     store = _evaluated(home("1"))
-    edited = home(
-        "1", description="A bright two-bedroom cottage.   Steps from the water.\r\n"
-    )
+    edited = home("1", description="A bright two-bedroom cottage.   Steps from the water.\r\n")
     assert detect_changes([edited], V1, store).decisions[0].status is Status.UNCHANGED
 
 
@@ -94,9 +89,7 @@ def test_text_change_reruns_text_steps_only() -> None:
 
 def test_added_photo_labels_only_the_new_photo() -> None:
     store = _evaluated(home("1", photo_ids=("p1", "p2")))
-    d = detect_changes([home("1", photo_ids=("p1", "p2", "p3"))], V1, store).decisions[
-        0
-    ]
+    d = detect_changes([home("1", photo_ids=("p1", "p2", "p3"))], V1, store).decisions[0]
     assert d.reasons == {Reason.PHOTOS_CHANGED}
     assert d.steps == (Step.VISION, Step.MATCH)
     assert d.photos_to_label == (photo("p3").sha256,)
@@ -105,26 +98,20 @@ def test_added_photo_labels_only_the_new_photo() -> None:
 def test_replaced_photo_bytes_label_only_the_new_hash() -> None:
     store = _evaluated(home("1", photo_ids=("p1", "p2")))
     changed = home("1", photo_ids=("p1",))
-    changed = type(changed)(
-        "1", changed.text_fields, (photo("p1"), photo("p2", "retouched"))
-    )
+    changed = type(changed)("1", changed.text_fields, (photo("p1"), photo("p2", "retouched")))
     d = detect_changes([changed], V1, store).decisions[0]
     assert d.photos_to_label == (photo("p2", "retouched").sha256,)
 
 
 def test_reorder_behind_the_hero_is_not_a_change() -> None:
     store = _evaluated(home("1", photo_ids=("p1", "p2", "p3")))
-    d = detect_changes([home("1", photo_ids=("p1", "p3", "p2"))], V1, store).decisions[
-        0
-    ]
+    d = detect_changes([home("1", photo_ids=("p1", "p3", "p2"))], V1, store).decisions[0]
     assert d.status is Status.UNCHANGED
 
 
 def test_new_hero_reruns_vision_but_reuses_every_cached_label() -> None:
     store = _evaluated(home("1", photo_ids=("p1", "p2", "p3")))
-    d = detect_changes([home("1", photo_ids=("p3", "p1", "p2"))], V1, store).decisions[
-        0
-    ]
+    d = detect_changes([home("1", photo_ids=("p3", "p1", "p2"))], V1, store).decisions[0]
     assert d.reasons == {Reason.PHOTOS_CHANGED}
     assert d.steps == (Step.VISION, Step.MATCH)
     assert d.photos_to_label == ()
@@ -144,9 +131,7 @@ def test_removed_photo_reruns_vision_without_new_labels() -> None:
         (_versions(model="m2"), Reason.MODEL_VERSION_CHANGED),
     ],
 )
-def test_rubric_or_model_change_forces_full_rerun(
-    versions: RunVersions, reason: Reason
-) -> None:
+def test_rubric_or_model_change_forces_full_rerun(versions: RunVersions, reason: Reason) -> None:
     h = home("1")
     store = _evaluated(h)
     d = detect_changes([h], versions, store).decisions[0]
@@ -177,9 +162,7 @@ def test_prompt_change_reruns_only_the_affected_step(
 
 def test_version_and_data_changes_combine() -> None:
     store = _evaluated(home("1"))
-    d = detect_changes(
-        [home("1", sleeps=9)], _versions(semantic="ps2"), store
-    ).decisions[0]
+    d = detect_changes([home("1", sleeps=9)], _versions(semantic="ps2"), store).decisions[0]
     assert d.reasons == {Reason.TEXT_CHANGED, Reason.PROMPT_VERSION_CHANGED}
     assert d.steps == (Step.SEMANTIC, Step.MATCH)
 
@@ -201,9 +184,7 @@ def test_detect_does_not_write_so_failed_ai_homes_are_retried() -> None:
 
 
 def test_duplicate_home_ids_are_rejected_not_fatal() -> None:
-    report = detect_changes(
-        [home("1"), home("2"), home("1")], V1, InMemoryFingerprintStore()
-    )
+    report = detect_changes([home("1"), home("2"), home("1")], V1, InMemoryFingerprintStore())
     assert [d.home_id for d in report.decisions] == ["2"]
     assert [r.home_id for r in report.rejected] == ["1", "1"]
 
@@ -238,11 +219,7 @@ def test_format_change_keeps_photo_labels_and_reports_version_reasons_too() -> N
 
 
 def test_fingerprint_roundtrips_through_dict() -> None:
-    fp = (
-        detect_changes([home("1")], V1, InMemoryFingerprintStore())
-        .decisions[0]
-        .fingerprint
-    )
+    fp = detect_changes([home("1")], V1, InMemoryFingerprintStore()).decisions[0].fingerprint
     assert Fingerprint.from_dict(fp.to_dict()) == fp
     assert fp.prompt_versions == {"semantic": "ps1", "vision": "pv1", "match": "pm1"}
 

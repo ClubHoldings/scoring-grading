@@ -175,14 +175,10 @@ def _canonical(value: Any, path: str) -> Any:
     if isinstance(value, (list, tuple, set, frozenset)):
         items = [_canonical(v, f"{path}[]") for v in value]
         distinct = {
-            json.dumps(i, sort_keys=True, ensure_ascii=False): i
-            for i in items
-            if i is not None
+            json.dumps(i, sort_keys=True, ensure_ascii=False): i for i in items if i is not None
         }
         return [distinct[k] for k in sorted(distinct)] or None
-    raise InvalidHomeRecordError(
-        f"unsupported value type {type(value).__name__} at {path}"
-    )
+    raise InvalidHomeRecordError(f"unsupported value type {type(value).__name__} at {path}")
 
 
 def canonical_text(text_fields: Mapping[str, Any]) -> dict[str, Any]:

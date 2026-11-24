@@ -52,7 +52,10 @@ the provider refuses to run against any other account.
 | `infra/terraform/live/dev`, `live/prod` | Per-environment roots; remote state in S3 with native lockfile. |
 | `.github/workflows/terraform.yml` | PR: fmt, validate, test, plan. Push to `dev`: apply to dev. Push to `prod`: apply to prod behind approval. `stage`: plan only against prod. |
 
-Branches: `dev` (default) -> `stage` -> `prod`. Region: `us-west-2`.
+| `.github/workflows/dev-to-stage-pr.yml`, `stage-to-prod-pr.yml` | Push to `dev` opens/updates a PR into `stage`; push to `stage` opens/updates a PR into `prod`. Merging is manual. |
+
+Branches: `dev` (default) -> `stage` -> `prod`. `stage` and `prod` are protected: changes only by PR, the `checks` job must pass, no force push or delete.
+Promotion: merge the PR into `stage` (plan against prod), then the PR into `prod` (apply to prod after the `prod` environment reviewer approves). Region: `us-west-2`.
 Every resource gets tags `project=scoring-grading`, `owner`, `environment`, `cost_centre`, `managed_by=terraform`
 (`cost_centre` is still the placeholder `TBD`).
 

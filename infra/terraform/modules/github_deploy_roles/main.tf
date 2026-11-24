@@ -122,6 +122,46 @@ data "aws_iam_policy_document" "apply" {
     actions   = ["kms:CreateKey", "kms:CreateAlias", "kms:ListAliases", "kms:TagResource"]
     resources = ["*"]
   }
+
+  # NOTE: Datadog log forwarder (SG-I5). Everything must be named
+  # <project>-<env>-*, including the CloudFormation stack, so the roles the
+  # stack creates also match the IAM statement above. Region is a wildcard
+  # because the provider region is fixed per root, not per module.
+  statement {
+    sid     = "ProjectLambda"
+    actions = ["lambda:*"]
+    resources = [
+      "arn:aws:lambda:*:${var.account_id}:function:${local.prefix}-*",
+      "arn:aws:lambda:*:${var.account_id}:layer:${local.prefix}-*",
+      "arn:aws:lambda:*:${var.account_id}:layer:${local.prefix}-*:*",
+    ]
+  }
+  statement {
+    sid     = "ProjectLogs"
+    actions = ["logs:*"]
+    resources = [
+      "arn:aws:logs:*:${var.account_id}:log-group:/aws/lambda/${local.prefix}-*",
+      "arn:aws:logs:*:${var.account_id}:log-group:/aws/lambda/${local.prefix}-*:*",
+      "arn:aws:logs:*:${var.account_id}:log-group:${local.prefix}-*",
+      "arn:aws:logs:*:${var.account_id}:log-group:${local.prefix}-*:*",
+    ]
+  }
+  statement {
+    sid     = "ProjectSecretsAndParams"
+    actions = ["secretsmanager:*", "ssm:*Parameter*"]
+    resources = [
+      "arn:aws:secretsmanager:*:${var.account_id}:secret:${local.prefix}-*",
+      "arn:aws:ssm:*:${var.account_id}:parameter/${local.prefix}/*",
+    ]
+  }
+  statement {
+    sid     = "ProjectCloudFormation"
+    actions = ["cloudformation:*"]
+    resources = [
+      "arn:aws:cloudformation:*:${var.account_id}:stack/${local.prefix}-*/*",
+      "arn:aws:cloudformation:*:aws:transform/Serverless-2016-10-31",
+    ]
+  }
 }
 
 resource "aws_iam_role_policy" "apply" {

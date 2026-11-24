@@ -24,7 +24,7 @@ select = ["E", "F", "I", "B", "UP", "SIM", "C90"]
 max-complexity = 15
 
 [tool.pyright]
-include = ["score", "tests/score"]
+include = ["score", "grade", "tests"]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
 venvPath = "."
@@ -35,4 +35,4 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.coverage.run]
-source = ["score"]
+source = ["score", "grade"]

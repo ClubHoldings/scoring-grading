@@ -1,0 +1,256 @@
+# Ruleset v0.1 (DRAFT). Points per rule are a draft split: each dimension adds up to Balaji's weight
+# (Media 20, Content 15, Amenities 15, Location 10, Occupancy 15, Fees 15, Channel 10) once every
+# flag is on. Final points wait on the business owner. Versions are immutable: to change a point
+# value or a rule, copy this file to a new version.
+#
+# check:   boolean SQL over feature row h. TRUE passes. FALSE or NULL (missing data) fails and the
+#          points still count.
+# found:   SQL text shown with a failure. Ids, counts and codes only, never free text.
+# applies: optional boolean SQL. FALSE leaves the rule out of that home's score.
+# flag:    rule runs only when this flag is enabled for the run (inputs not in the lake yet).
+
+version = "v0.1"
+note = "Draft. Seven dimensions on tables already in the lake; address, fee and media-table rules behind flags."
+
+# Property status codes that make up the scored population.
+sellable_statuses = ["AVAILABLE", "AVAILABLE_RENTAL"]
+# Partner source codes exempt from coordinates and flagged (Q6). Set the real codes in a new version.
+coords_exempt_sources = []
+
+# ---- Media (20) ----
+[[rule]]
+id = "MED_PHOTO_1"
+dimension = "media"
+description = "At least 1 photo"
+points = 5
+minimum = true
+check = "h.photo_count >= 1"
+found = "'photos=' || CAST(h.photo_count AS VARCHAR)"
+
+# Photo count steps are cumulative: 10+ earns 6, 15+ earns 8, 20+ earns 10 (60 / 80 / 100%).
+# Below 10 earns nothing on top of the 1-photo rule: the business answer is still open.
+[[rule]]
+id = "MED_PHOTO_10"
+dimension = "media"
+description = "10 or more photos"
+points = 6
+check = "h.photo_count >= 10"
+found = "'photos=' || CAST(h.photo_count AS VARCHAR)"
+
+[[rule]]
+id = "MED_PHOTO_15"
+dimension = "media"
+description = "15 or more photos"
+points = 2
+check = "h.photo_count >= 15"
+found = "'photos=' || CAST(h.photo_count AS VARCHAR)"
+
+[[rule]]
+id = "MED_PHOTO_20"
+dimension = "media"
+description = "20 or more photos"
+points = 2
+check = "h.photo_count >= 20"
+found = "'photos=' || CAST(h.photo_count AS VARCHAR)"
+
+[[rule]]
+id = "MED_HERO"
+dimension = "media"
+description = "Hero photo set"
+points = 5
+check = "h.has_hero = 1"
+found = "'no hero photo'"
+
+# ---- Content (15) ----
+[[rule]]
+id = "CON_NAME"
+dimension = "content"
+description = "Name present"
+points = 2
+minimum = true
+check = "h.has_name = 1"
+found = "'name empty'"
+
+[[rule]]
+id = "CON_TYPE"
+dimension = "content"
+description = "Property type present"
+points = 1
+check = "h.property_type_ucode IS NOT NULL"
+found = "'type empty'"
+
+[[rule]]
+id = "CON_DESC_LEN"
+dimension = "content"
+description = "Description of 150+ characters"
+points = 3
+minimum = true
+check = "h.desc_len >= 150"
+found = "'description length=' || CAST(h.desc_len AS VARCHAR)"
+
+[[rule]]
+id = "CON_SUMMARY"
+dimension = "content"
+description = "Summary present"
+points = 2
+check = "h.summary_len > 0"
+found = "'summary empty'"
+
+[[rule]]
+id = "CON_NO_HTML"
+dimension = "content"
+description = "No HTML in description"
+points = 1
+check = "h.desc_has_html = 0"
+found = "'HTML tags in description'"
+
+[[rule]]
+id = "CON_NO_CONTACT"
+dimension = "content"
+description = "No phone number or email in description"
+points = 2
+minimum = true
+check = "h.desc_has_contact = 0"
+found = "'phone or email in description'"
+
+[[rule]]
+id = "CON_SQFT"
+dimension = "content"
+description = "Square footage present"
+points = 1
+check = "h.square_footage > 0"
+found = "'square footage empty'"
+
+[[rule]]
+id = "CON_SLUG_UNIQUE"
+dimension = "content"
+description = "URL slug present and unique"
+points = 3
+minimum = true
+check = "h.has_slug = 1 AND h.slug_homes = 1"
+found = "'slug shared by ' || CAST(h.slug_homes AS VARCHAR) || ' homes'"
+
+# ---- Amenities (15) ----
+[[rule]]
+id = "AMN_RECORDED"
+dimension = "amenities"
+description = "Amenities recorded"
+points = 15
+check = "h.amenity_count > 0"
+found = "'amenities=0'"
+
+# ---- Location (10) ----
+# Address rules wait on QDEV-711 (no addresses in bronze).
+[[rule]]
+id = "LOC_CITY_COUNTRY"
+dimension = "location"
+description = "City and country present"
+points = 3
+minimum = true
+flag = "address"
+check = "h.has_city = 1 AND h.has_country = 1"
+found = "'city=' || CAST(h.has_city AS VARCHAR) || ', country=' || CAST(h.has_country AS VARCHAR)"
+
+[[rule]]
+id = "LOC_STATE_POSTAL"
+dimension = "location"
+description = "State and postal code present"
+points = 2
+flag = "address"
+check = "h.has_state = 1 AND h.has_postal = 1"
+found = "'state=' || CAST(h.has_state AS VARCHAR) || ', postal=' || CAST(h.has_postal AS VARCHAR)"
+
+[[rule]]
+id = "LOC_COORDS"
+dimension = "location"
+description = "Valid latitude and longitude"
+points = 5
+minimum = true
+applies = "h.coords_exempt = 0"
+check = "h.coords_valid = 1"
+found = "'coordinates missing or out of range'"
+
+# ---- Occupancy (15) ----
+[[rule]]
+id = "OCC_SLEEPS"
+dimension = "occupancy"
+description = "Sleeps recorded"
+points = 5
+check = "h.sleeps > 0"
+found = "'sleeps=' || coalesce(CAST(h.sleeps AS VARCHAR), 'empty')"
+
+[[rule]]
+id = "OCC_BEDROOMS"
+dimension = "occupancy"
+description = "Bedrooms recorded"
+points = 5
+minimum = true
+check = "h.bedrooms > 0"
+found = "'bedrooms=' || coalesce(CAST(h.bedrooms AS VARCHAR), 'empty')"
+
+[[rule]]
+id = "OCC_BATHROOMS"
+dimension = "occupancy"
+description = "Bathrooms recorded"
+points = 5
+check = "h.bathroom_count > 0"
+found = "'bathrooms=0'"
+
+# ---- Fees, policies, taxes (15) ----
+# Presence checks only (Q5, Q12). Source tables are unconfirmed, so the whole dimension is off.
+# Service fee and tax setup have no known source yet and are not defined.
+[[rule]]
+id = "FEE_PRICE"
+dimension = "fees_policies_taxes"
+description = "Current price present"
+points = 5
+flag = "fees"
+check = "h.price_rows_current > 0"
+found = "'current price rows=' || CAST(h.price_rows_current AS VARCHAR)"
+
+[[rule]]
+id = "FEE_TAX"
+dimension = "fees_policies_taxes"
+description = "Tax present on current price"
+points = 3
+flag = "fees"
+check = "h.tax_rows_current > 0"
+found = "'tax rows=' || CAST(h.tax_rows_current AS VARCHAR)"
+
+[[rule]]
+id = "FEE_CLEANING"
+dimension = "fees_policies_taxes"
+description = "Cleaning fee present"
+points = 3
+flag = "fees"
+check = "h.cleaning_rows_current > 0"
+found = "'cleaning fee rows=' || CAST(h.cleaning_rows_current AS VARCHAR)"
+
+[[rule]]
+id = "FEE_CANCEL_POLICY"
+dimension = "fees_policies_taxes"
+description = "Cancellation policy set"
+points = 4
+flag = "fees"
+check = "h.has_cancel_policy = 1"
+found = "'cancellation policy empty'"
+
+# ---- Channel consistency (10) ----
+# Cross-channel checks join later (separate story) and are not defined here.
+[[rule]]
+id = "CHN_CLUB_LINK"
+dimension = "channel_consistency"
+description = "Linked to a club (current link)"
+points = 5
+minimum = true
+check = "h.club_links > 0"
+found = "'current club links=0'"
+
+[[rule]]
+id = "CHN_SOURCE"
+dimension = "channel_consistency"
+description = "Partner source present"
+points = 5
+minimum = true
+check = "h.has_source = 1"
+found = "'partner source empty or unknown'"

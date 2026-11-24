@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Iterator
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -79,6 +80,16 @@ def photo_rule() -> str:
 def coords_rule() -> str:
     """Extra rule: valid coordinates, minimum requirement, N/A when exempt."""
     return COORDS_RULE_TEXT
+
+
+@pytest.fixture
+def source_db(tmp_path: Path) -> str:
+    """Path of a DuckDB file holding the sample source tables."""
+    path = str(tmp_path / "sample.duckdb")
+    c = duckdb.connect(path)
+    _load_sources(c)
+    c.close()
+    return path
 
 
 @pytest.fixture

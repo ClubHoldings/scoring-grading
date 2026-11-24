@@ -263,7 +263,7 @@ def run_rules(
         executor.drop(stage_features)
     result = RunResult(run_id, ruleset.version, homes, available, failures, na)
     logger.info(
-        "dq_run_complete",
+        "score_run_complete",
         run_id=run_id,
         ruleset=ruleset.version,
         trigger=settings.trigger,

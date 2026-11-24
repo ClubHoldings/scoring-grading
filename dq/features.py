@@ -54,7 +54,8 @@ SELECT s.property_uid,
             THEN 1 ELSE 0 END AS coords_valid,
        coalesce(ph.n, 0) AS photo_count,
        coalesce(am.n, 0) AS amenity_count,
-       coalesce(bt.n, 0) AS bathroom_count,
+       coalesce(bt.n, 0) + coalesce(i.min_full_baths, 0) + coalesce(i.max_full_baths, 0)
+         + coalesce(i.min_half_baths, 0) + coalesce(i.max_half_baths, 0) AS bathroom_count,
        coalesce(cl.n, 0) AS club_links{extra_columns}
 FROM s
 LEFT JOIN {src}.property_information i ON i.property_uid = s.property_uid

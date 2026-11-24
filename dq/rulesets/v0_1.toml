@@ -191,7 +191,7 @@ found = "'bedrooms=' || coalesce(CAST(h.bedrooms AS VARCHAR), 'empty')"
 [[rule]]
 id = "OCC_BATHROOMS"
 dimension = "occupancy"
-description = "Bathrooms recorded"
+description = "Bathrooms recorded (bathroom room rows or a count on the home record)"
 points = 5
 check = "h.bathroom_count > 0"
 found = "'bathrooms=0'"

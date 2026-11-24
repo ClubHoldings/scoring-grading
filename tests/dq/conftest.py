@@ -106,7 +106,8 @@ def _load_sources(c: duckdb.DuckDBPyConnection) -> None:
     c.execute(
         "CREATE TABLE silver.property_information (property_uid BIGINT, description VARCHAR, "
         "summary VARCHAR, square_footage INTEGER, latitude VARCHAR, longitude VARCHAR, "
-        "cancellation_policy_ucode VARCHAR)"
+        "cancellation_policy_ucode VARCHAR, min_full_baths INTEGER, max_full_baths INTEGER, "
+        "min_half_baths INTEGER, max_half_baths INTEGER)"
     )
     info = [
         (1, GOOD_DESC, "Short summary", 1800, "41.5", "-70.6", "FLEX"),
@@ -115,7 +116,10 @@ def _load_sources(c: duckdb.DuckDBPyConnection) -> None:
         (4, GOOD_DESC, "s", 700, "abc", "10", "FLEX"),
         (5, GOOD_DESC, "s", 700, None, None, "FLEX"),
     ]
-    c.executemany("INSERT INTO silver.property_information VALUES (?,?,?,?,?,?,?)", info)
+    c.executemany(
+        "INSERT INTO silver.property_information VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        [(*row, None, None, None, None) for row in info],
+    )
     c.execute("CREATE TABLE silver.property_source (property_source_ucode VARCHAR)")
     c.executemany(
         "INSERT INTO silver.property_source VALUES (?)", [("SRC_A",), ("SRC_A",), ("SRC_EXEMPT",)]

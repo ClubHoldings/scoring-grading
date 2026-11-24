@@ -103,3 +103,22 @@ def test_home_without_description_does_not_earn_the_description_rules(
     }
     # Missing data earns 0 on every description rule, minimum requirements included.
     assert {"CON_DESC_LEN", "CON_NO_HTML", "CON_NO_CONTACT"} <= failed
+
+
+def test_bathroom_count_on_the_info_record_passes_without_a_room_row(
+    executor: DuckDbExecutor, as_of: dt.date, con: duckdb.DuckDBPyConnection
+) -> None:
+    # Home 5 has no bathroom room row, home 3 has none either; neither has a count on file yet.
+    con.execute("UPDATE silver.property_information SET max_full_baths = 2 WHERE property_uid = 5")
+    con.execute("UPDATE silver.property_information SET max_half_baths = 1 WHERE property_uid = 3")
+
+    run_rules(executor, RunSettings("v0.1", as_of))
+
+    failed = {
+        r[0]
+        for r in executor.fetch(
+            "SELECT property_uid FROM results.rule_failure WHERE rule_id = 'OCC_BATHROOMS'"
+        )
+    }
+    # Home 2 has no room row and no count: still fails. Homes 3 and 5 now pass.
+    assert failed == {2}

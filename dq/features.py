@@ -39,8 +39,10 @@ SELECT s.property_uid,
        CASE WHEN s.property_source_ucode IN ({exempt}) THEN 1 ELSE 0 END AS coords_exempt,
        length(coalesce(i.description, '')) AS desc_len,
        length(coalesce(i.summary, '')) AS summary_len,
-       CASE WHEN regexp_like(i.description, '<[^>]+>') THEN 1 ELSE 0 END AS desc_has_html,
-       CASE WHEN regexp_like(i.description,
+       CASE WHEN i.description IS NULL THEN NULL
+            WHEN regexp_like(i.description, '<[^>]+>') THEN 1 ELSE 0 END AS desc_has_html,
+       CASE WHEN i.description IS NULL THEN NULL
+            WHEN regexp_like(i.description,
            '[0-9]{3}[-. ][0-9]{3}[-. ][0-9]{4}|[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\\.[A-Za-z]{2,}')
             THEN 1 ELSE 0 END AS desc_has_contact,
        coalesce(i.square_footage, 0) AS square_footage,
@@ -99,12 +101,18 @@ LEFT JOIN (SELECT property_uid, count(*) AS n,
 
 
 def _ident(value: str, what: str) -> str:
+    """Return ``value`` if it is a plain lower case identifier.
+
+    Raises:
+        ConfigurationError: anything else, so a schema name can never carry SQL.
+    """
     if not _IDENT_RE.match(value):
         raise ConfigurationError(f"{what} {value!r} is not a plain lower case identifier")
     return value
 
 
 def _in_list(codes: tuple[str, ...]) -> str:
+    """Render codes as a SQL IN list; NULL when empty so the test matches nothing."""
     # Codes are validated upper case [A-Z0-9_] by the ruleset loader, so quoting is safe.
     return ", ".join(f"'{c}'" for c in codes) if codes else "NULL"
 

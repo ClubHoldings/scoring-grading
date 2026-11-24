@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from dq.errors import ConfigurationError
+
 Dialect = Literal["duckdb", "athena"]
 
 # Abstract type -> (duckdb, athena).
@@ -80,7 +82,7 @@ TABLES: dict[str, list[tuple[str, str]]] = {
 
 
 def sql_type(abstract: str, dialect: Dialect) -> str:
-    """Return the backend type name for an abstract type."""
+    """Map an abstract column type to the backend type name (DuckDB or Athena)."""
     duck, athena = _TYPES[abstract]
     return duck if dialect == "duckdb" else athena
 
@@ -107,7 +109,7 @@ def create_table_sql(schema: str, table: str, dialect: Dialect, location: str | 
     if dialect == "duckdb":
         return head
     if location is None:
-        raise ValueError("athena tables need an S3 location")
+        raise ConfigurationError("athena tables need an S3 location")
     return (
         f"{head} LOCATION '{location.rstrip('/')}/{table}/' TBLPROPERTIES ('table_type'='ICEBERG')"
     )

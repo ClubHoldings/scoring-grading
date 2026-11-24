@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from dq.errors import ConfigurationError
 from dq.schema import TABLES, create_table_sql, insert_select
 
 
@@ -14,7 +15,7 @@ def test_athena_ddl_is_iceberg_with_location() -> None:
 
 
 def test_athena_needs_location() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ConfigurationError):
         create_table_sql("results", "run", "athena")
 
 

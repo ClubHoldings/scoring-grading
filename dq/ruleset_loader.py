@@ -6,6 +6,7 @@ Points live in these files, not in code, so the business can change them by addi
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import tomllib
 from importlib import resources
@@ -68,6 +69,12 @@ def load_ruleset(version: str) -> Ruleset:
     return parse_ruleset(read_ruleset_text(version), expected_version=version)
 
 
+def _content_hash(doc: dict[str, Any]) -> str:
+    """Hash parsed ruleset content, so a comment-only edit keeps the version's identity."""
+    canonical = json.dumps(doc, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def _require_str(raw: dict[str, Any], key: str, where: str) -> str:
     value = raw.get(key)
     if not isinstance(value, str) or not value.strip():
@@ -84,6 +91,11 @@ def _require_sql(raw: dict[str, Any], key: str, where: str) -> str:
 
 
 def _parse_rule(raw: dict[str, Any]) -> Rule:
+    """Validate one rule table.
+
+    Raises:
+        ConfigurationError: missing or invalid field.
+    """
     rule_id = _require_str(raw, "id", "rule")
     where = f"rule {rule_id}"
     if not _RULE_ID_RE.match(rule_id):
@@ -113,6 +125,11 @@ def _parse_rule(raw: dict[str, Any]) -> Rule:
 
 
 def _parse_codes(raw: Any, key: str) -> tuple[str, ...]:
+    """Validate a list of upper case codes.
+
+    Raises:
+        ConfigurationError: not a list of codes.
+    """
     if not isinstance(raw, list) or not all(isinstance(c, str) and _CODE_RE.match(c) for c in raw):
         raise ConfigurationError(f"'{key}' must be a list of upper case codes")
     return tuple(raw)
@@ -126,7 +143,8 @@ def parse_ruleset(text: str, expected_version: str | None = None) -> Ruleset:
         expected_version: When given, the file's ``version`` must equal it.
 
     Returns:
-        The validated ruleset. ``content_hash`` is the SHA-256 of ``text``.
+        The validated ruleset. ``content_hash`` is the SHA-256 of the parsed content,
+            so comment and layout edits do not change it.
 
     Raises:
         ConfigurationError: syntax or validation problem.
@@ -156,7 +174,7 @@ def parse_ruleset(text: str, expected_version: str | None = None) -> Ruleset:
         coords_exempt_sources=_parse_codes(
             doc.get("coords_exempt_sources", []), "coords_exempt_sources"
         ),
-        content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        content_hash=_content_hash(doc),
     )
     if not ruleset.sellable_statuses:
         raise ConfigurationError("'sellable_statuses' must not be empty")

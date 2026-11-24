@@ -181,3 +181,35 @@ def test_flags_with_no_rules_left_are_rejected(
 
     with pytest.raises(ConfigurationError):
         run_rules(executor, RunSettings("v0.9", as_of), ruleset=parse_ruleset(only_flagged))
+
+
+def test_ruleset_override_must_match_the_settings_version(
+    executor: DuckDbExecutor, as_of: dt.date, photo_rule: str
+) -> None:
+    with pytest.raises(ConfigurationError):
+        run_rules(executor, RunSettings("v0.1", as_of), ruleset=parse_ruleset(photo_rule))
+
+
+def test_duplicate_source_rows_are_refused_not_double_counted(
+    executor: DuckDbExecutor, as_of: dt.date, con: duckdb.DuckDBPyConnection
+) -> None:
+    con.execute(
+        "INSERT INTO silver.property_information SELECT * FROM silver.property_information "
+        "WHERE property_uid = 1"
+    )
+
+    with pytest.raises(ConfigurationError, match="more than one row"):
+        run_rules(executor, RunSettings("v0.1", as_of))
+
+    assert executor.fetch("SELECT count(*) FROM results.run") == [(0,)]
+
+
+def test_comment_only_edit_keeps_the_same_ruleset_identity(
+    executor: DuckDbExecutor, as_of: dt.date, photo_rule: str
+) -> None:
+    settings = RunSettings("v0.9", as_of)
+    run_rules(executor, settings, ruleset=parse_ruleset(photo_rule))
+
+    run_rules(executor, settings, ruleset=parse_ruleset("# a comment\n" + photo_rule))
+
+    assert executor.fetch("SELECT count(*) FROM results.ruleset") == [(1,)]

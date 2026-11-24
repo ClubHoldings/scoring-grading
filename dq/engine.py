@@ -29,7 +29,7 @@ from dq.executor import Executor
 from dq.features import features_sql
 from dq.model import KNOWN_FLAGS, TRIGGERS, Rule, Ruleset, RunSettings
 from dq.ruleset_loader import load_ruleset
-from dq.schema import TABLES, Dialect, create_table_sql, insert_select
+from dq.schema import TABLES, create_table_sql, insert_select
 
 logger = structlog.get_logger(__name__)
 
@@ -56,11 +56,12 @@ class RunResult:
 
 
 def _q(value: str) -> str:
-    """Quote a string literal."""
+    """Quote a string literal, doubling embedded single quotes."""
     return "'" + value.replace("'", "''") + "'"
 
 
 def _opt(value: str | None) -> str:
+    """Quote a string literal, or NULL when there is no value."""
     return "NULL" if value is None else _q(value)
 
 
@@ -106,7 +107,6 @@ def register_ruleset(
                 f"{ruleset.version} is registered with different content; use a new version"
             )
         return False
-    d: Dialect = executor.dialect
     executor.execute(
         insert_select(
             results_schema,
@@ -120,7 +120,7 @@ def register_ruleset(
                 "registered_at": _ts(now),
             },
             "",
-            d,
+            executor.dialect,
         )
     )
     for r in ruleset.rules:
@@ -141,13 +141,14 @@ def register_ruleset(
                     "applies_sql": _opt(r.applies_sql),
                 },
                 "",
-                d,
+                executor.dialect,
             )
         )
     return True
 
 
 def _ts(value: dt.datetime) -> str:
+    """Render a timestamp literal."""
     return f"TIMESTAMP '{value.strftime('%Y-%m-%d %H:%M:%S')}'"
 
 
@@ -185,6 +186,12 @@ def evaluation_sql(rules: tuple[Rule, ...], features: str) -> str:
 
 
 def _validate(settings: RunSettings) -> None:
+    """Check trigger and flags before anything is written.
+
+    Raises:
+        InvalidTriggerError: unknown trigger.
+        ConfigurationError: unknown flag.
+    """
     if settings.trigger not in TRIGGERS:
         raise InvalidTriggerError(settings.trigger)
     unknown = settings.enabled_flags - KNOWN_FLAGS
@@ -193,6 +200,7 @@ def _validate(settings: RunSettings) -> None:
 
 
 def _count(executor: Executor, sql: str) -> int:
+    """Run a count query and return the number."""
     return int(executor.fetch(sql)[0][0])
 
 
@@ -225,9 +233,12 @@ def run_rules(
     """
     _validate(settings)
     ruleset = ruleset or load_ruleset(settings.ruleset_version)
+    if ruleset.version != settings.ruleset_version:
+        raise ConfigurationError(
+            f"settings ask for {settings.ruleset_version} but the ruleset is {ruleset.version}"
+        )
     started = now()
     schema = settings.results_schema
-    d: Dialect = executor.dialect
     init_schema(executor, schema, athena_location)
     register_ruleset(executor, ruleset, schema, started)
 
@@ -241,13 +252,12 @@ def run_rules(
             stage_features,
             features_sql(ruleset, settings.source_schema, settings.as_of, settings.enabled_flags),
         )
+        _refuse_duplicate_homes(executor, stage_features)
         executor.materialise(stage_eval, evaluation_sql(rules, stage_features))
-        failures = _append_failures(executor, schema, run_id, stage_eval, d)
-        na = _append_not_applicable(executor, schema, run_id, stage_eval, d)
-        homes = _append_home_scores(
-            executor, schema, run_id, stage_features, stage_eval, available, d
-        )
-        _append_run(executor, schema, run_id, settings, started, homes, available, d)
+        failures = _append_failures(executor, schema, run_id, stage_eval)
+        na = _append_not_applicable(executor, schema, run_id, stage_eval)
+        homes = _append_home_scores(executor, schema, run_id, stage_features, stage_eval, available)
+        _append_run(executor, schema, run_id, ruleset.version, settings, started, homes, available)
     finally:
         executor.drop(stage_eval)
         executor.drop(stage_features)
@@ -265,7 +275,24 @@ def run_rules(
     return result
 
 
-def _append_failures(executor: Executor, schema: str, run_id: str, stage: str, d: Dialect) -> int:
+def _refuse_duplicate_homes(executor: Executor, stage_features: str) -> None:
+    """Stop a run whose source tables hold more than one row per home.
+
+    A join fan-out would score a home twice and break repeatable results, so it is refused
+    before any result row is written.
+
+    Raises:
+        ConfigurationError: the feature table has a repeated home.
+    """
+    dup = _count(executor, f"SELECT count(*) - count(DISTINCT property_uid) FROM {stage_features}")
+    if dup:
+        raise ConfigurationError(
+            f"source tables have more than one row per home ({dup} extra rows); "
+            "a latest-snapshot filter is needed upstream"
+        )
+
+
+def _append_failures(executor: Executor, schema: str, run_id: str, stage: str) -> int:
     executor.execute(
         insert_select(
             schema,
@@ -279,7 +306,7 @@ def _append_failures(executor: Executor, schema: str, run_id: str, stage: str, d
                 "found_value": "found_value",
             },
             f"FROM {stage} WHERE outcome = 'FAIL'",
-            d,
+            executor.dialect,
         )
     )
     return _count(
@@ -287,9 +314,7 @@ def _append_failures(executor: Executor, schema: str, run_id: str, stage: str, d
     )
 
 
-def _append_not_applicable(
-    executor: Executor, schema: str, run_id: str, stage: str, d: Dialect
-) -> int:
+def _append_not_applicable(executor: Executor, schema: str, run_id: str, stage: str) -> int:
     executor.execute(
         insert_select(
             schema,
@@ -301,7 +326,7 @@ def _append_not_applicable(
                 "points": "points",
             },
             f"FROM {stage} WHERE outcome = 'NA'",
-            d,
+            executor.dialect,
         )
     )
     return _count(
@@ -316,7 +341,6 @@ def _append_home_scores(
     stage_features: str,
     stage_eval: str,
     available: int,
-    d: Dialect,
 ) -> int:
     pa = f"({available} - COALESCE(na.pts, 0))"
     earned = f"({pa} - COALESCE(lost.pts, 0))"
@@ -339,7 +363,7 @@ def _append_home_scores(
             f"LEFT JOIN (SELECT property_uid, SUM(points) AS pts, SUM(is_min) AS min_failed "
             f"FROM {stage_eval} WHERE outcome = 'FAIL' GROUP BY property_uid) lost "
             f"ON lost.property_uid = f.property_uid",
-            d,
+            executor.dialect,
         )
     )
     return _count(executor, f"SELECT count(*) FROM {schema}.home_score WHERE run_id = {_q(run_id)}")
@@ -349,11 +373,11 @@ def _append_run(
     executor: Executor,
     schema: str,
     run_id: str,
+    version: str,
     settings: RunSettings,
     started: dt.datetime,
     homes: int,
     available: int,
-    d: Dialect,
 ) -> None:
     executor.execute(
         insert_select(
@@ -361,7 +385,7 @@ def _append_run(
             "run",
             {
                 "run_id": _q(run_id),
-                "ruleset_version": _q(settings.ruleset_version),
+                "ruleset_version": _q(version),
                 "trigger": _q(settings.trigger),
                 "as_of": f"DATE '{settings.as_of.isoformat()}'",
                 "enabled_flags": _q(",".join(sorted(settings.enabled_flags))),
@@ -370,6 +394,6 @@ def _append_run(
                 "points_available": str(available),
             },
             "",
-            d,
+            executor.dialect,
         )
     )

@@ -83,7 +83,7 @@ class DuckDbExecutor:
             raise ExecutionError(str(exc)) from exc
 
     def ensure_namespace(self, name: str) -> None:
-        """Create the schema if missing."""
+        """Create the schema if missing (CREATE SCHEMA IF NOT EXISTS)."""
         self.execute(f"CREATE SCHEMA IF NOT EXISTS {name}")
 
     def materialise(self, name: str, select_sql: str) -> None:
@@ -91,7 +91,7 @@ class DuckDbExecutor:
         self.execute(f"CREATE OR REPLACE TABLE {name} AS {select_sql}")
 
     def drop(self, name: str) -> None:
-        """Drop a staging table."""
+        """Drop a staging table. Result tables are never dropped."""
         self.execute(f"DROP TABLE IF EXISTS {name}")
 
 
@@ -116,7 +116,7 @@ class AthenaExecutor:
         """Create the Athena client.
 
         Args:
-            workgroup: Athena workgroup, for example ``quintess-lake``.
+            workgroup: Athena workgroup, for example ``lake-workgroup``.
             staging_location: ``s3://bucket/prefix`` for staging CTAS tables.
             region: AWS region.
             poll_seconds: Wait between status checks.

@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import datetime as dt
 
+import duckdb
+
 from dq.engine import run_rules
 from dq.executor import DuckDbExecutor
 from dq.model import RunSettings
-from dq.ruleset_loader import load_ruleset, parse_ruleset
+from dq.ruleset_loader import parse_ruleset, read_ruleset_text
 
 SCORES_FLAGS_OFF = {1: 100.0, 2: 23.75, 3: 28.75, 4: 87.5, 5: 56.25}
 MIN_FAILED = {1: 0, 2: 6, 3: 6, 4: 2, 5: 1}
@@ -71,9 +73,7 @@ def test_address_and_fee_flags_add_their_rules(executor: DuckDbExecutor, as_of: 
 def test_exempt_source_is_flagged_not_applicable_for_coordinates(
     executor: DuckDbExecutor, as_of: dt.date
 ) -> None:
-    text = load_ruleset("v0.1") and __import__("importlib.resources", fromlist=["files"]).files(
-        "dq.rulesets"
-    ).joinpath("v0_1.toml").read_text(encoding="utf-8")
+    text = read_ruleset_text("v0.1")
     exempt = parse_ruleset(
         text.replace("coords_exempt_sources = []", 'coords_exempt_sources = ["SRC_EXEMPT"]')
     )
@@ -88,3 +88,18 @@ def test_exempt_source_is_flagged_not_applicable_for_coordinates(
         "SELECT points_available, score, min_req_failed FROM results.home_score "
         "WHERE property_uid = 5"
     ) == [(75, 60.0, 0)]
+
+
+def test_home_without_description_does_not_earn_the_description_rules(
+    executor: DuckDbExecutor, as_of: dt.date, con: duckdb.DuckDBPyConnection
+) -> None:
+    con.execute("DELETE FROM silver.property_information WHERE property_uid = 4")
+
+    run_rules(executor, RunSettings("v0.1", as_of))
+
+    failed = {
+        r[0]
+        for r in executor.fetch("SELECT rule_id FROM results.rule_failure WHERE property_uid = 4")
+    }
+    # Missing data earns 0 on every description rule, minimum requirements included.
+    assert {"CON_DESC_LEN", "CON_NO_HTML", "CON_NO_CONTACT"} <= failed

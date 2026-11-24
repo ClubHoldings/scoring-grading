@@ -8,7 +8,7 @@ from enum import StrEnum
 
 
 class Dimension(StrEnum):
-    """The seven score dimensions (design 5.2). Weights are Balaji's, see ``DIMENSION_WEIGHTS``."""
+    """The seven score dimensions (design 5.2); weights are in ``DIMENSION_WEIGHTS``."""
 
     MEDIA = "media"
     CONTENT = "content"
@@ -74,7 +74,7 @@ class Ruleset:
         note: Why this version exists.
         rules: All rules, including those behind a disabled flag.
         sellable_statuses: Property status codes in the scored population.
-        coords_exempt_sources: Partner source codes exempt from coordinates (Q6), flagged as
+        coords_exempt_sources: Partner source codes exempt from coordinates, flagged as
             not applicable.
     """
 

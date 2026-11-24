@@ -1,4 +1,4 @@
-# Ruleset v0.1 (DRAFT). Points per rule are a draft split: each dimension adds up to Balaji's weight
+# Ruleset v0.1 (DRAFT). Points per rule are a draft split: each dimension adds up to the business owner's weight
 # (Media 20, Content 15, Amenities 15, Location 10, Occupancy 15, Fees 15, Channel 10) once every
 # flag is on. Final points wait on the business owner. Versions are immutable: to change a point
 # value or a rule, copy this file to a new version.
@@ -14,7 +14,7 @@ note = "Draft. Seven dimensions on tables already in the lake; address, fee and 
 
 # Property status codes that make up the scored population.
 sellable_statuses = ["AVAILABLE", "AVAILABLE_RENTAL"]
-# Partner source codes exempt from coordinates and flagged (Q6). Set the real codes in a new version.
+# Partner source codes exempt from coordinates and flagged. Set the real codes in a new version.
 coords_exempt_sources = []
 
 # ---- Media (20) ----
@@ -197,7 +197,7 @@ check = "h.bathroom_count > 0"
 found = "'bathrooms=0'"
 
 # ---- Fees, policies, taxes (15) ----
-# Presence checks only (Q5, Q12). Source tables are unconfirmed, so the whole dimension is off.
+# Presence checks only Source tables are unconfirmed, so the whole dimension is off.
 # Service fee and tax setup have no known source yet and are not defined.
 [[rule]]
 id = "FEE_PRICE"

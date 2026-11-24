@@ -112,7 +112,15 @@ def test_replaced_photo_bytes_label_only_the_new_hash() -> None:
     assert d.photos_to_label == (photo("p2", "retouched").sha256,)
 
 
-def test_reorder_reruns_vision_but_reuses_every_cached_label() -> None:
+def test_reorder_behind_the_hero_is_not_a_change() -> None:
+    store = _evaluated(home("1", photo_ids=("p1", "p2", "p3")))
+    d = detect_changes([home("1", photo_ids=("p1", "p3", "p2"))], V1, store).decisions[
+        0
+    ]
+    assert d.status is Status.UNCHANGED
+
+
+def test_new_hero_reruns_vision_but_reuses_every_cached_label() -> None:
     store = _evaluated(home("1", photo_ids=("p1", "p2", "p3")))
     d = detect_changes([home("1", photo_ids=("p3", "p1", "p2"))], V1, store).decisions[
         0

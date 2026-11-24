@@ -27,10 +27,13 @@ Canonical form of the text fields
 Photo set
 ---------
 Photos are identified by ``(photo_id, sha256)``. The sha256 is the content hash that the
-photo copy story (SG-B5) puts into the S3 key, so no bytes are read here. Order matters:
-the vision step treats the first photo as the hero and cites photo ids. A pure reorder
-therefore changes the set hash, but not the set of content hashes (see ``photo_hashes``),
-so cached per-photo labels stay valid.
+photo copy story (SG-B5) puts into the S3 key, so no bytes are read here. The set hash
+covers the hero (first photo) and the unordered set of photos. Order beyond the hero is
+ignored: the vision step treats only the first photo specially, per-photo labels are cached
+by content hash, and re-ordering the rest changes no input of the step. A new hero, an
+added, removed or replaced photo does change the hash.
+FIXME: if SG-B6 picks the 8-10 photos sent to the model by position (design 7.1, open),
+the hash must cover that selection instead. Ref: QDEV-883.
 
 Nothing here logs or stores text; only digests leave the module.
 """
@@ -104,7 +107,7 @@ class HomeHashes:
 
     Attributes:
         text_hash: Hash of the canonical text fields.
-        photo_set_hash: Hash of the ordered ``(photo_id, sha256)`` list.
+        photo_set_hash: Hash of the hero plus the unordered photo set.
         photo_hashes: Sorted distinct content hashes; the key of cached photo labels.
     """
 
@@ -236,15 +239,17 @@ def _validate_photos(photos: Iterable[PhotoRef]) -> tuple[PhotoRef, ...]:
     return tuple(checked)
 
 
-def _ordered_photos_hash(photos: tuple[PhotoRef, ...]) -> str:
-    return _digest({"photos": [[p.photo_id, p.sha256] for p in photos]})
+def _photo_set_digest(photos: tuple[PhotoRef, ...]) -> str:
+    hero = [photos[0].photo_id, photos[0].sha256] if photos else None
+    members = sorted([p.photo_id, p.sha256] for p in photos)
+    return _digest({"hero": hero, "photos": members})
 
 
 def photo_set_hash(photos: Iterable[PhotoRef]) -> str:
-    """SHA-256 of the ordered ``(photo_id, sha256)`` list.
+    """SHA-256 of the hero and the unordered set of ``(photo_id, sha256)`` pairs.
 
     Args:
-        photos: Photos in display order, hero first.
+        photos: Photos in display order, hero first; only the first one's position counts.
 
     Returns:
         Lowercase hex digest.
@@ -252,7 +257,7 @@ def photo_set_hash(photos: Iterable[PhotoRef]) -> str:
     Raises:
         InvalidHomeRecordError: bad sha256, empty or duplicate photo id.
     """
-    return _ordered_photos_hash(_validate_photos(photos))
+    return _photo_set_digest(_validate_photos(photos))
 
 
 def compute_hashes(home: HomeRecord) -> HomeHashes:
@@ -270,6 +275,6 @@ def compute_hashes(home: HomeRecord) -> HomeHashes:
     photos = _validate_photos(home.photos)
     return HomeHashes(
         text_hash=text_hash(home.text_fields),
-        photo_set_hash=_ordered_photos_hash(photos),
+        photo_set_hash=_photo_set_digest(photos),
         photo_hashes=tuple(sorted({p.sha256 for p in photos})),
     )

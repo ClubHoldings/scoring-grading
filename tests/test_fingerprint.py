@@ -122,10 +122,12 @@ def test_canonical_text_is_plain_data() -> None:
     assert canonical_text({}) == {}
 
 
-def test_photo_order_is_part_of_the_set_hash() -> None:
-    a, b = photo("p1"), photo("p2")
-    assert photo_set_hash([a, b]) != photo_set_hash([b, a])
+def test_only_the_hero_position_counts() -> None:
+    a, b, c = photo("p1"), photo("p2"), photo("p3")
+    assert photo_set_hash([a, b, c]) == photo_set_hash([a, c, b])
+    assert photo_set_hash([a, b, c]) != photo_set_hash([b, a, c])
     assert photo_set_hash([a, b]) == photo_set_hash((a, b))
+    assert photo_set_hash([]) != photo_set_hash([a])
 
 
 def test_changed_bytes_or_id_change_the_set_hash() -> None:

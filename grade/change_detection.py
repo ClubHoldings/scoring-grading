@@ -11,7 +11,7 @@ home only the affected step reruns.
 Change             Steps that rerun
 =================  ===========================================================
 text               semantic, match
-photo set          vision, match; labels only for photos with a new content hash
+photo set or hero  vision, match; labels only for photos with a new content hash
 prompt of a step   that step, plus match when it feeds match
 rubric or model    all steps; every photo is labelled again
 canonical format   all steps; photo labels are kept (content hashes do not change)
@@ -121,7 +121,7 @@ class Fingerprint:
         home_id: Home the fingerprint belongs to.
         format_version: Canonical-form version it was computed with.
         text_hash: Hash of the canonical text fields.
-        photo_set_hash: Hash of the ordered photo list.
+        photo_set_hash: Hash of the hero plus the unordered photo set.
         photo_hashes: Sorted distinct photo content hashes.
         rubric_version: Pinned rubric version of the run.
         model_version: Pinned model version of the run.

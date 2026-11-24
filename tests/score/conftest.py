@@ -8,7 +8,7 @@ from collections.abc import Iterator
 import duckdb
 import pytest
 
-from scoring.executor import DuckDbExecutor
+from score.executor import DuckDbExecutor
 
 AS_OF = dt.date(2026, 11, 24)
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from scoring.errors import ConfigurationError
-from scoring.schema import TABLES, create_table_sql, insert_select
+from score.errors import ConfigurationError
+from score.schema import TABLES, create_table_sql, insert_select
 
 
 def test_athena_ddl_is_iceberg_with_location() -> None:

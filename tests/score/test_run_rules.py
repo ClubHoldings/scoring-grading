@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import datetime as dt
 
-from scoring.engine import run_rules
-from scoring.executor import DuckDbExecutor
-from scoring.model import RunSettings
-from scoring.ruleset_loader import parse_ruleset
+from score.engine import run_rules
+from score.executor import DuckDbExecutor
+from score.model import RunSettings
+from score.ruleset_loader import parse_ruleset
 
 
 def _exempt(photo_rule: str, exempt: str) -> str:

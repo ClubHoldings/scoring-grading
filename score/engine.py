@@ -20,16 +20,16 @@ from dataclasses import dataclass
 
 import structlog
 
-from scoring.errors import (
+from score.errors import (
     ConfigurationError,
     InvalidTriggerError,
     RulesetChangedError,
 )
-from scoring.executor import Executor
-from scoring.features import features_sql
-from scoring.model import KNOWN_FLAGS, TRIGGERS, Rule, Ruleset, RunSettings
-from scoring.ruleset_loader import load_ruleset
-from scoring.schema import TABLES, create_table_sql, insert_select
+from score.executor import Executor
+from score.features import features_sql
+from score.model import KNOWN_FLAGS, TRIGGERS, Rule, Ruleset, RunSettings
+from score.ruleset_loader import load_ruleset
+from score.schema import TABLES, create_table_sql, insert_select
 
 logger = structlog.get_logger(__name__)
 

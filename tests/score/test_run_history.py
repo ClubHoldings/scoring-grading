@@ -9,18 +9,18 @@ from typing import Any
 import duckdb
 import pytest
 
-from scoring.engine import run_rules
-from scoring.errors import (
+from score.engine import run_rules
+from score.errors import (
     ConfigurationError,
     ExecutionError,
     InvalidTriggerError,
     RulesetChangedError,
     UnknownRulesetError,
 )
-from scoring.executor import DuckDbExecutor
-from scoring.model import RunSettings
-from scoring.ruleset_loader import parse_ruleset
-from scoring.schema import Dialect
+from score.executor import DuckDbExecutor
+from score.model import RunSettings
+from score.ruleset_loader import parse_ruleset
+from score.schema import Dialect
 
 RESULT_QUERIES = {
     "home_score": "SELECT * EXCLUDE (run_id) FROM results.home_score ORDER BY property_uid",

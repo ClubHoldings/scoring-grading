@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
 
-from scoring.errors import ConfigurationError, ExecutionError
-from scoring.schema import Dialect
+from score.errors import ConfigurationError, ExecutionError
+from score.schema import Dialect
 
 if TYPE_CHECKING:
     import duckdb

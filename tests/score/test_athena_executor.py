@@ -10,8 +10,8 @@ from typing import Any
 
 import pytest
 
-from scoring.errors import ConfigurationError, ExecutionError
-from scoring.executor import AthenaExecutor
+from score.errors import ConfigurationError, ExecutionError
+from score.executor import AthenaExecutor
 
 
 class FakeAthena:

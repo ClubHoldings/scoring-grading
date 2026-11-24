@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from scoring.errors import ConfigurationError, UnknownRulesetError
-from scoring.model import DIMENSION_WEIGHTS, Dimension
-from scoring.ruleset_loader import load_ruleset, parse_ruleset
+from score.errors import ConfigurationError, UnknownRulesetError
+from score.model import DIMENSION_WEIGHTS, Dimension
+from score.ruleset_loader import load_ruleset, parse_ruleset
 
 GOOD = """
 version = "v0.9"

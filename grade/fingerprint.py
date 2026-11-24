@@ -15,8 +15,10 @@ Canonical form of the text fields
   holding only those are all "missing" and dropped. A field that is missing and a field that
   is absent hash the same, so adding a new nullable column never changes old fingerprints.
 * Numbers: ints, floats and Decimals with the same value hash the same (``3``, ``3.0``,
-  ``Decimal("3.00")``). NaN and infinity are rejected: they have no stable meaning.
-  A string ``"3"`` stays different from the number ``3``.
+  ``Decimal("3.00")``, ``1.5`` and ``Decimal("1.50")``). Non-integral numbers are kept as
+  exact decimal text, never rounded through float. NaN and infinity are rejected: they have
+  no stable meaning. A string ``"3"`` stays different from the number ``3``.
+* Mapping keys must be strings and are used as given (they are column names, not data).
 * Multi-valued fields (lists, tuples, sets such as amenities) are unordered: items are
   canonicalised, de-duplicated and sorted. The source gives no order guarantee for them.
 * Serialisation: compact JSON, sorted keys, UTF-8, no ASCII escaping, prefixed with
@@ -37,7 +39,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import re
 import unicodedata
 from collections.abc import Iterable, Mapping
@@ -113,6 +114,7 @@ class HomeHashes:
 
 
 def _digest(payload: object) -> str:
+    """SHA-256 of ``FORMAT_VERSION`` plus the compact, key-sorted JSON of ``payload``."""
     text = json.dumps(
         payload,
         sort_keys=True,
@@ -123,33 +125,49 @@ def _digest(payload: object) -> str:
     return hashlib.sha256(f"{FORMAT_VERSION}\n{text}".encode()).hexdigest()
 
 
-def _canonical_number(value: float | Decimal) -> int | float | str:
-    if isinstance(value, Decimal):
-        if not value.is_finite():
-            raise InvalidHomeRecordError(f"non-finite number: {value}")
-        value = value.normalize()
-        return int(value) if value == value.to_integral_value() else float(value)
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            raise InvalidHomeRecordError(f"non-finite number: {value}")
-        return int(value) if value.is_integer() else value
-    return value
+def _canonical_number(value: float | Decimal) -> int | dict[str, str]:
+    """Canonical number: an int when integral, else a tagged exact decimal string.
+
+    The tag keeps ``2.5`` (number) from colliding with ``"2.5"`` (text). ``repr`` of a
+    float is its shortest round-trip form, so it agrees with the equivalent Decimal.
+
+    Raises:
+        InvalidHomeRecordError: NaN or infinity.
+    """
+    decimal = Decimal(repr(value)) if isinstance(value, float) else Decimal(value)
+    if not decimal.is_finite():
+        raise InvalidHomeRecordError(f"non-finite number: {value}")
+    decimal = decimal.normalize()
+    if decimal == decimal.to_integral_value():
+        return int(decimal)
+    return {"$num": format(decimal, "f")}
 
 
 def _canonical(value: Any, path: str) -> Any:
-    """Return the canonical form of ``value``, or ``None`` when it counts as missing."""
+    """Return the canonical form of ``value``, or ``None`` when it counts as missing.
+
+    Raises:
+        InvalidHomeRecordError: unsupported type, non-string key, NaN or infinity.
+    """
     if value is None:
         return None
     if isinstance(value, bool):
         return value
-    if isinstance(value, (int, float, Decimal)):
+    if isinstance(value, int):
+        return value
+    if isinstance(value, (float, Decimal)):
         return _canonical_number(value)
     if isinstance(value, str):
         text = _WHITESPACE_RE.sub(" ", unicodedata.normalize("NFC", value)).strip()
         return text or None
     if isinstance(value, Mapping):
-        mapped = {str(k): _canonical(v, f"{path}.{k}") for k, v in value.items()}
-        mapped = {k: v for k, v in mapped.items() if v is not None}
+        mapped: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise InvalidHomeRecordError(f"non-string key {key!r} at {path}")
+            canonical = _canonical(item, f"{path}.{key}")
+            if canonical is not None:
+                mapped[key] = canonical
         return mapped or None
     if isinstance(value, (list, tuple, set, frozenset)):
         items = [_canonical(v, f"{path}[]") for v in value]
@@ -167,19 +185,40 @@ def _canonical(value: Any, path: str) -> Any:
 def canonical_text(text_fields: Mapping[str, Any]) -> dict[str, Any]:
     """Canonical form of the text fields (see module docstring).
 
+    Args:
+        text_fields: Field name to value, as read for the AI text steps.
+
+    Returns:
+        Canonical dict with missing fields removed; ``{}`` when nothing is left.
+
     Raises:
-        InvalidHomeRecordError: a value has an unsupported type or is NaN / infinite.
+        InvalidHomeRecordError: unsupported type, non-string key, NaN or infinity.
     """
     canonical = _canonical(dict(text_fields), "text_fields")
     return canonical if isinstance(canonical, dict) else {}
 
 
 def text_hash(text_fields: Mapping[str, Any]) -> str:
-    """SHA-256 of the canonical text fields."""
+    """SHA-256 of the canonical text fields.
+
+    Args:
+        text_fields: Field name to value.
+
+    Returns:
+        Lowercase hex digest.
+
+    Raises:
+        InvalidHomeRecordError: see ``canonical_text``.
+    """
     return _digest({"text": canonical_text(text_fields)})
 
 
 def _validate_photos(photos: Iterable[PhotoRef]) -> tuple[PhotoRef, ...]:
+    """Check photos and lower-case their hashes, keeping order.
+
+    Raises:
+        InvalidHomeRecordError: empty or duplicate photo id, malformed sha256.
+    """
     checked: list[PhotoRef] = []
     seen: set[str] = set()
     for photo in photos:
@@ -204,6 +243,12 @@ def _ordered_photos_hash(photos: tuple[PhotoRef, ...]) -> str:
 def photo_set_hash(photos: Iterable[PhotoRef]) -> str:
     """SHA-256 of the ordered ``(photo_id, sha256)`` list.
 
+    Args:
+        photos: Photos in display order, hero first.
+
+    Returns:
+        Lowercase hex digest.
+
     Raises:
         InvalidHomeRecordError: bad sha256, empty or duplicate photo id.
     """
@@ -212,6 +257,12 @@ def photo_set_hash(photos: Iterable[PhotoRef]) -> str:
 
 def compute_hashes(home: HomeRecord) -> HomeHashes:
     """Compute all digests for one home.
+
+    Args:
+        home: Record with text fields and ordered photos.
+
+    Returns:
+        Text hash, photo-set hash and the distinct photo content hashes.
 
     Raises:
         InvalidHomeRecordError: the record cannot be fingerprinted.

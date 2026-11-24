@@ -14,21 +14,27 @@ text               semantic, match
 photo set          vision, match; labels only for photos with a new content hash
 prompt of a step   that step, plus match when it feeds match
 rubric or model    all steps; every photo is labelled again
+canonical format   all steps; photo labels are kept (content hashes do not change)
 first time seen    all steps; every photo is labelled
 =================  ===========================================================
 
 The match check reads the semantic claims and the vision output, so it reruns whenever
-either of them does.
+either of them does. Reasons accumulate: a home with a text edit and a new prompt version
+reports both.
 
 Storage contract: ``detect_changes`` only reads. The caller stores ``decision.fingerprint``
 (``store.put_many``) **after** the AI steps for that home succeeded. Storing earlier would
 mark a home with a failed AI call as "unchanged" on the next night and silently skip it.
+
+A home that cannot be fingerprinted (bad photo hash, NaN, duplicate id) is reported in
+``ChangeReport.rejected`` and does not stop the other homes.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
@@ -37,6 +43,7 @@ import structlog
 from grade.fingerprint import (
     FORMAT_VERSION,
     FingerprintError,
+    HomeHashes,
     HomeRecord,
     InvalidHomeRecordError,
     Step,
@@ -107,6 +114,9 @@ class RunVersions:
 class Fingerprint:
     """What is stored per home after a successful AI run.
 
+    Flat on purpose: it maps one-to-one onto a result-table row. Prompt versions are keyed
+    by the step's string value so a step added later does not break stored rows.
+
     Attributes:
         home_id: Home the fingerprint belongs to.
         format_version: Canonical-form version it was computed with.
@@ -127,6 +137,31 @@ class Fingerprint:
     model_version: str
     prompt_versions: Mapping[str, str]
 
+    @classmethod
+    def build(
+        cls, home_id: str, hashes: HomeHashes, versions: RunVersions
+    ) -> Fingerprint:
+        """Combine fresh hashes with the pinned versions of this run.
+
+        Args:
+            home_id: Home the hashes belong to.
+            hashes: Digests from ``compute_hashes``.
+            versions: Pinned versions of this run.
+
+        Returns:
+            The fingerprint to store once the AI steps succeeded.
+        """
+        return cls(
+            home_id=home_id,
+            format_version=FORMAT_VERSION,
+            text_hash=hashes.text_hash,
+            photo_set_hash=hashes.photo_set_hash,
+            photo_hashes=hashes.photo_hashes,
+            rubric_version=versions.rubric,
+            model_version=versions.model,
+            prompt_versions={s.value: versions.prompts[s] for s in Step},
+        )
+
     def to_dict(self) -> dict[str, object]:
         """Plain JSON-ready dict, for SG-B1 result tables or Iceberg rows."""
         return {
@@ -144,21 +179,31 @@ class Fingerprint:
     def from_dict(cls, data: Mapping[str, object]) -> Fingerprint:
         """Inverse of ``to_dict``.
 
+        Prompt versions of steps unknown to the row are left out, so ``detect_changes``
+        sees them as changed instead of failing the batch.
+
+        Args:
+            data: Row as written by ``to_dict``.
+
+        Returns:
+            The fingerprint.
+
         Raises:
             StoredFingerprintError: a field is missing or has the wrong type.
         """
         try:
             photo_hashes = data["photo_hashes"]
             prompts = data["prompt_versions"]
-            if not isinstance(photo_hashes, Sequence) or isinstance(photo_hashes, str):
-                raise TypeError("photo_hashes must be a list")
-            if not isinstance(prompts, Mapping):
-                raise TypeError("prompt_versions must be a mapping")
-            missing = [s.value for s in Step if s.value not in prompts]
-            if missing:
-                raise KeyError(f"prompt_versions lacks {missing}")
+            home_id = data["home_id"]
+        except KeyError as exc:
+            raise StoredFingerprintError(f"stored fingerprint lacks {exc}") from exc
+        if not isinstance(photo_hashes, Sequence) or isinstance(photo_hashes, str):
+            raise StoredFingerprintError("photo_hashes must be a list")
+        if not isinstance(prompts, Mapping):
+            raise StoredFingerprintError("prompt_versions must be a mapping")
+        try:
             return cls(
-                home_id=str(data["home_id"]),
+                home_id=str(home_id),
                 format_version=str(data["format_version"]),
                 text_hash=str(data["text_hash"]),
                 photo_set_hash=str(data["photo_set_hash"]),
@@ -167,10 +212,8 @@ class Fingerprint:
                 model_version=str(data["model_version"]),
                 prompt_versions={str(k): str(v) for k, v in prompts.items()},
             )
-        except (KeyError, TypeError) as exc:
-            raise StoredFingerprintError(
-                f"unreadable stored fingerprint: {exc}"
-            ) from exc
+        except KeyError as exc:
+            raise StoredFingerprintError(f"stored fingerprint lacks {exc}") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,28 +239,42 @@ class Decision:
 
 
 @dataclass(frozen=True, slots=True)
+class RejectedHome:
+    """A home that could not be fingerprinted and was skipped.
+
+    Attributes:
+        home_id: The home (may appear more than once for duplicate ids).
+        reason: Why, without any home text.
+    """
+
+    home_id: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
 class ChangeReport:
-    """All decisions of one run, in input order."""
+    """All decisions of one run, in input order, plus the homes that were rejected."""
 
-    decisions: tuple[Decision, ...] = field(default_factory=tuple)
+    decisions: tuple[Decision, ...] = ()
+    rejected: tuple[RejectedHome, ...] = ()
 
-    def _with(self, status: Status) -> tuple[Decision, ...]:
+    def _by_status(self, status: Status) -> tuple[Decision, ...]:
         return tuple(d for d in self.decisions if d.status is status)
 
     @property
     def new(self) -> tuple[Decision, ...]:
         """Homes never evaluated before."""
-        return self._with(Status.NEW)
+        return self._by_status(Status.NEW)
 
     @property
     def changed(self) -> tuple[Decision, ...]:
         """Known homes with a text, photo or version change."""
-        return self._with(Status.CHANGED)
+        return self._by_status(Status.CHANGED)
 
     @property
     def unchanged(self) -> tuple[Decision, ...]:
         """Homes that reuse their stored result."""
-        return self._with(Status.UNCHANGED)
+        return self._by_status(Status.UNCHANGED)
 
     @property
     def to_evaluate(self) -> tuple[Decision, ...]:
@@ -229,63 +286,57 @@ class FingerprintStore(Protocol):
     """Storage interface; SG-B1 result tables or Iceberg implement it later."""
 
     def get_many(self, home_ids: Sequence[str]) -> Mapping[str, Fingerprint]:
-        """Return the last stored fingerprint for each known home id (absent = unknown)."""
-        ...
+        """Return the last stored fingerprint per known home id.
 
-    def put_many(self, fingerprints: Iterable[Fingerprint]) -> None:
-        """Store fingerprints, replacing any earlier one of the same home."""
-        ...
+        Args:
+            home_ids: Ids to look up.
 
-
-class InMemoryFingerprintStore:
-    """Dict-backed store for tests and local runs."""
-
-    def __init__(self) -> None:
-        """Create an empty store."""
-        self._rows: dict[str, dict[str, object]] = {}
-
-    def get_many(self, home_ids: Sequence[str]) -> Mapping[str, Fingerprint]:
-        """Return stored fingerprints for the ids that exist.
-
-        Raises:
-            StoredFingerprintError: a stored row is corrupt.
+        Returns:
+            Fingerprints for the ids that exist; unknown ids are absent.
         """
-        return {
-            h: Fingerprint.from_dict(self._rows[h]) for h in home_ids if h in self._rows
-        }
+        ...
 
     def put_many(self, fingerprints: Iterable[Fingerprint]) -> None:
-        """Store (serialised, so reads behave like a real table)."""
-        for fp in fingerprints:
-            self._rows[fp.home_id] = fp.to_dict()
+        """Store fingerprints, replacing any earlier one of the same home.
+
+        Args:
+            fingerprints: Fingerprints to write.
+        """
+        ...
 
 
-def _current(home: HomeRecord, versions: RunVersions) -> Fingerprint:
-    hashes = compute_hashes(home)
-    return Fingerprint(
-        home_id=home.home_id,
-        format_version=FORMAT_VERSION,
-        text_hash=hashes.text_hash,
-        photo_set_hash=hashes.photo_set_hash,
-        photo_hashes=hashes.photo_hashes,
-        rubric_version=versions.rubric,
-        model_version=versions.model,
-        prompt_versions={s.value: versions.prompts[s] for s in Step},
+def _decision(
+    fresh: Fingerprint,
+    status: Status,
+    reasons: Iterable[Reason],
+    steps: Iterable[Step],
+    photos_to_label: Iterable[str],
+) -> Decision:
+    wanted = set(steps)
+    return Decision(
+        home_id=fresh.home_id,
+        status=status,
+        reasons=frozenset(reasons),
+        steps=tuple(s for s in Step if s in wanted),
+        photos_to_label=tuple(photos_to_label),
+        fingerprint=fresh,
     )
 
 
 def _decide(fresh: Fingerprint, stored: Fingerprint | None) -> Decision:
-    all_steps = tuple(Step)
+    """Compare a fresh fingerprint with the stored one (see module docstring table).
+
+    Args:
+        fresh: Fingerprint of the home as it is now, with this run's versions.
+        stored: Last stored fingerprint, or ``None`` for a home never evaluated.
+
+    Returns:
+        The verdict, including which steps rerun and which photos need labels.
+    """
     if stored is None:
-        return Decision(
-            fresh.home_id, Status.NEW, frozenset({Reason.FIRST_SEEN}), all_steps,
-            fresh.photo_hashes, fresh,
-        )  # fmt: skip
-    if stored.format_version != fresh.format_version:
-        return Decision(
-            fresh.home_id, Status.CHANGED, frozenset({Reason.FORMAT_CHANGED}), all_steps,
-            fresh.photo_hashes, fresh,
-        )  # fmt: skip
+        return _decision(
+            fresh, Status.NEW, [Reason.FIRST_SEEN], Step, fresh.photo_hashes
+        )
 
     reasons: set[Reason] = set()
     steps: set[Step] = set()
@@ -295,39 +346,58 @@ def _decide(fresh: Fingerprint, stored: Fingerprint | None) -> Decision:
     if stored.model_version != fresh.model_version:
         reasons.add(Reason.MODEL_VERSION_CHANGED)
         steps.update(Step)
-    changed_prompts = {
-        s
-        for s in Step
-        if stored.prompt_versions[s.value] != fresh.prompt_versions[s.value]
-    }
-    if changed_prompts:
-        reasons.add(Reason.PROMPT_VERSION_CHANGED)
-        steps.update(changed_prompts)
-    # Photo labels are cached per content hash; they stay valid only while the vision
-    # step itself (rubric, model, prompt) is unchanged.
+    for step in Step:
+        if stored.prompt_versions.get(step.value) != fresh.prompt_versions[step.value]:
+            reasons.add(Reason.PROMPT_VERSION_CHANGED)
+            steps.add(step)
+    # Cached photo labels stay valid only while the vision step itself (rubric, model,
+    # prompt) is unchanged. Decided here, before data changes add vision to the steps.
     labels_valid = Step.VISION not in steps
-    if stored.text_hash != fresh.text_hash:
-        reasons.add(Reason.TEXT_CHANGED)
-        steps.add(Step.SEMANTIC)
-    if stored.photo_set_hash != fresh.photo_set_hash:
-        reasons.add(Reason.PHOTOS_CHANGED)
-        steps.add(Step.VISION)
+
+    if stored.format_version != fresh.format_version:
+        # Hashes from another canonical form are not comparable: rerun all steps.
+        reasons.add(Reason.FORMAT_CHANGED)
+        steps.update(Step)
+    else:
+        if stored.text_hash != fresh.text_hash:
+            reasons.add(Reason.TEXT_CHANGED)
+            steps.add(Step.SEMANTIC)
+        if stored.photo_set_hash != fresh.photo_set_hash:
+            reasons.add(Reason.PHOTOS_CHANGED)
+            steps.add(Step.VISION)
     if Step.SEMANTIC in steps or Step.VISION in steps:
         steps.add(Step.MATCH)
 
     if not steps:
-        return Decision(fresh.home_id, Status.UNCHANGED, frozenset(), (), (), fresh)
-    ordered = tuple(s for s in Step if s in steps)
+        return _decision(fresh, Status.UNCHANGED, [], [], [])
     if Step.VISION not in steps:
-        to_label: tuple[str, ...] = ()
+        to_label: Iterable[str] = ()
     elif labels_valid:
         known = set(stored.photo_hashes)
-        to_label = tuple(h for h in fresh.photo_hashes if h not in known)
+        to_label = (h for h in fresh.photo_hashes if h not in known)
     else:
         to_label = fresh.photo_hashes
-    return Decision(
-        fresh.home_id, Status.CHANGED, frozenset(reasons), ordered, to_label, fresh
-    )
+    return _decision(fresh, Status.CHANGED, reasons, steps, to_label)
+
+
+def _fingerprint_all(
+    homes: Sequence[HomeRecord], versions: RunVersions
+) -> tuple[list[Fingerprint], list[RejectedHome]]:
+    """Fingerprint every home, rejecting duplicates and invalid records."""
+    id_counts = Counter(h.home_id for h in homes)
+    fresh: list[Fingerprint] = []
+    rejected: list[RejectedHome] = []
+    for home in homes:
+        if id_counts[home.home_id] > 1:
+            rejected.append(RejectedHome(home.home_id, "duplicate home_id in input"))
+            continue
+        try:
+            hashes = compute_hashes(home)
+        except InvalidHomeRecordError as exc:
+            rejected.append(RejectedHome(home.home_id, str(exc)))
+            continue
+        fresh.append(Fingerprint.build(home.home_id, hashes, versions))
+    return fresh, rejected
 
 
 def detect_changes(
@@ -336,29 +406,35 @@ def detect_changes(
     """Classify every home as new, changed or unchanged.
 
     Args:
-        homes: Home records of this run; ids must be unique.
+        homes: Home records of this run.
         versions: Pinned rubric, prompt and model versions of this run.
         store: Source of the last stored fingerprints. Only read.
 
     Returns:
-        One decision per home, in input order.
+        One decision per valid home in input order, plus the rejected homes (invalid
+        record, or an id that appears more than once; all its occurrences are rejected).
 
     Raises:
-        InvalidHomeRecordError: duplicate home id, or a record cannot be fingerprinted.
         StoredFingerprintError: the store returned an unreadable fingerprint.
     """
-    ids = [h.home_id for h in homes]
-    if len(set(ids)) != len(ids):
-        raise InvalidHomeRecordError("duplicate home_id in input")
-    stored = store.get_many(ids)
+    fresh, rejected = _fingerprint_all(homes, versions)
+    stored = store.get_many([f.home_id for f in fresh])
     report = ChangeReport(
-        tuple(_decide(_current(h, versions), stored.get(h.home_id)) for h in homes)
+        decisions=tuple(_decide(f, stored.get(f.home_id)) for f in fresh),
+        rejected=tuple(rejected),
     )
+    if rejected:
+        logger.warning(
+            "change_detection_rejected",
+            count=len(rejected),
+            home_ids=[r.home_id for r in rejected],
+        )
     logger.info(
         "change_detection_done",
         homes=len(homes),
         new=len(report.new),
         changed=len(report.changed),
         unchanged=len(report.unchanged),
+        rejected=len(rejected),
     )
     return report

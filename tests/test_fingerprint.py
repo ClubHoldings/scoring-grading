@@ -168,3 +168,17 @@ def test_same_bytes_under_two_ids_gives_one_content_hash() -> None:
 
 def test_no_photos_is_valid() -> None:
     assert compute_hashes(HomeRecord("1", {})).photo_hashes == ()
+
+
+def test_long_decimals_do_not_collide_through_float_rounding() -> None:
+    a, b = Decimal("0.12345678901234567890"), Decimal("0.12345678901234567891")
+    assert text_hash({"n": a}) != text_hash({"n": b})
+
+
+def test_number_and_numeric_text_stay_distinct() -> None:
+    assert text_hash({"n": 2.5}) != text_hash({"n": "2.5"})
+
+
+def test_non_string_mapping_keys_rejected() -> None:
+    with pytest.raises(InvalidHomeRecordError, match="non-string key"):
+        text_hash({"address": {1: "a", "1": "b"}})

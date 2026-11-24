@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from grade.change_detection import (
     Fingerprint,
-    InMemoryFingerprintStore,
     InvalidVersionsError,
     Reason,
     RunVersions,
@@ -14,7 +15,8 @@ from grade.change_detection import (
     StoredFingerprintError,
     detect_changes,
 )
-from grade.fingerprint import HomeRecord, InvalidHomeRecordError, Step
+from grade.fingerprint import HomeRecord, PhotoRef, Step
+from grade.fingerprint_store import InMemoryFingerprintStore
 from tests.sample_homes import home, photo
 
 V1 = RunVersions(
@@ -190,9 +192,41 @@ def test_detect_does_not_write_so_failed_ai_homes_are_retried() -> None:
     assert detect_changes([home("1")], V1, store).decisions[0].status is Status.NEW
 
 
-def test_duplicate_home_ids_rejected() -> None:
-    with pytest.raises(InvalidHomeRecordError, match="duplicate home_id"):
-        detect_changes([home("1"), home("1")], V1, InMemoryFingerprintStore())
+def test_duplicate_home_ids_are_rejected_not_fatal() -> None:
+    report = detect_changes(
+        [home("1"), home("2"), home("1")], V1, InMemoryFingerprintStore()
+    )
+    assert [d.home_id for d in report.decisions] == ["2"]
+    assert [r.home_id for r in report.rejected] == ["1", "1"]
+
+
+def test_one_invalid_home_does_not_stop_the_others() -> None:
+    bad = HomeRecord("9", {"n": float("nan")}, (PhotoRef("p", "nothex"),))
+    report = detect_changes([home("1"), bad, home("2")], V1, InMemoryFingerprintStore())
+    assert [d.home_id for d in report.decisions] == ["1", "2"]
+    assert [r.home_id for r in report.rejected] == ["9"]
+    assert "sha256" in report.rejected[0].reason
+
+
+def test_new_step_in_code_marks_old_rows_changed_instead_of_failing() -> None:
+    store = _evaluated(home("1"), home("2"))
+    old = store.get_many(["1"])["1"]
+    # A row written before the match step existed has no prompt version for it.
+    store.put_many([replace(old, prompt_versions={"semantic": "ps1", "vision": "pv1"})])
+    report = detect_changes([home("1"), home("2")], V1, store)
+    assert report.decisions[0].reasons == {Reason.PROMPT_VERSION_CHANGED}
+    assert report.decisions[0].steps == (Step.MATCH,)
+    assert report.decisions[1].status is Status.UNCHANGED
+
+
+def test_format_change_keeps_photo_labels_and_reports_version_reasons_too() -> None:
+    store = InMemoryFingerprintStore()
+    fresh = detect_changes([home("1")], V1, store).decisions[0].fingerprint
+    store.put_many([Fingerprint.from_dict(fresh.to_dict() | {"format_version": "fp0"})])
+    d = detect_changes([home("1")], _versions(semantic="ps2"), store).decisions[0]
+    assert d.reasons == {Reason.FORMAT_CHANGED, Reason.PROMPT_VERSION_CHANGED}
+    assert d.steps == tuple(Step)
+    assert d.photos_to_label == ()
 
 
 def test_fingerprint_roundtrips_through_dict() -> None:
@@ -209,10 +243,11 @@ def test_fingerprint_roundtrips_through_dict() -> None:
     "broken",
     [
         {},
+        {"home_id": "1", "photo_hashes": [], "prompt_versions": {}},
         {"home_id": "1"},
-        {"photo_hashes": "abc", "prompt_versions": {}},
-        {"photo_hashes": [], "prompt_versions": []},
-        {"photo_hashes": [], "prompt_versions": {"semantic": "x"}},
+        {"home_id": "1", "photo_hashes": "abc", "prompt_versions": {}},
+        {"home_id": "1", "photo_hashes": [], "prompt_versions": []},
+        {"home_id": "1", "photo_hashes": [], "prompt_versions": {"semantic": "x"}},
     ],
 )
 def test_unreadable_stored_fingerprint_raises(broken: dict[str, object]) -> None:

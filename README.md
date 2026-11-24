@@ -7,6 +7,22 @@ Jira epic: QDEV-518, label `scoring-grading`.
 > This repository is public. Never commit secrets, account credentials, `.env`, `db_connect.sh`,
 > `docs/db_details/`, `data/` or any database extract. `.gitignore` excludes them; keep it that way.
 
+## Status (2026-11-24)
+
+Infra stories (dev account only; the prod account does not exist yet):
+
+| Story | State |
+|---|---|
+| QDEV-890 IaC and CI skeleton | Dev pipeline works (checks, plan, apply). Promotion workflows and `stage`/`prod` protection in place. Prod approval untested until the prod account exists. |
+| QDEV-889 Photo bucket | Deployed in dev and checked. "AI role can read" waits for the role in QDEV-888. |
+| QDEV-888 Bedrock access | Blocked: Anthropic models fail in the dev account (use case form not submitted, Claude 5.x not enabled), quota is 0. Region: `us-west-2`. |
+
+Open items:
+- Real `cost_centre` value (tags say `TBD`).
+- PR `dev` -> `stage` is open and deliberately not merged yet.
+- Prod account: bootstrap it, then set `AWS_ACCOUNT_ID` on the `prod` and `prod-plan` GitHub Environments.
+- Scoring role for Bedrock (QDEV-888) once model access works.
+
 ## Logical architecture
 
 From the Design doc, section 3. Rules run as one set-based query; the AI only sees homes whose text

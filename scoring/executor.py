@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
 
-from dq.errors import ConfigurationError, ExecutionError
-from dq.schema import Dialect
+from scoring.errors import ConfigurationError, ExecutionError
+from scoring.schema import Dialect
 
 if TYPE_CHECKING:
     import duckdb

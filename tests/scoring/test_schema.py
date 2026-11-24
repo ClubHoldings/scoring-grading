@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from dq.errors import ConfigurationError
-from dq.schema import TABLES, create_table_sql, insert_select
+from scoring.errors import ConfigurationError
+from scoring.schema import TABLES, create_table_sql, insert_select
 
 
 def test_athena_ddl_is_iceberg_with_location() -> None:
-    sql = create_table_sql("results", "run", "athena", "s3://bucket/dq/")
+    sql = create_table_sql("results", "run", "athena", "s3://bucket/scoring/")
     assert "string" in sql and "'table_type'='ICEBERG'" in sql
-    assert "LOCATION 's3://bucket/dq/run/'" in sql
+    assert "LOCATION 's3://bucket/scoring/run/'" in sql
 
 
 def test_athena_needs_location() -> None:

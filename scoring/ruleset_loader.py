@@ -1,4 +1,4 @@
-"""Load and validate ruleset files (TOML) shipped in ``dq/rulesets``.
+"""Load and validate ruleset files (TOML) shipped in ``scoring/rulesets``.
 
 Points live in these files, not in code, so the business can change them by adding a new version.
 """
@@ -14,8 +14,8 @@ from typing import Any
 
 import structlog
 
-from dq.errors import ConfigurationError, UnknownRulesetError
-from dq.model import KNOWN_FLAGS, Dimension, Rule, Ruleset
+from scoring.errors import ConfigurationError, UnknownRulesetError
+from scoring.model import KNOWN_FLAGS, Dimension, Rule, Ruleset
 
 logger = structlog.get_logger(__name__)
 
@@ -47,7 +47,7 @@ def read_ruleset_text(version: str) -> str:
     Raises:
         UnknownRulesetError: no file for this version.
     """
-    path = resources.files("dq.rulesets").joinpath(_filename(version))
+    path = resources.files("scoring.rulesets").joinpath(_filename(version))
     if not path.is_file():
         raise UnknownRulesetError(version)
     return path.read_text(encoding="utf-8")

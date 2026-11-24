@@ -14,8 +14,8 @@ from __future__ import annotations
 import datetime as dt
 import re
 
-from dq.errors import ConfigurationError
-from dq.model import Ruleset
+from scoring.errors import ConfigurationError
+from scoring.model import Ruleset
 
 _IDENT_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 

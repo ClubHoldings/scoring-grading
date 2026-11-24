@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from dq.errors import ConfigurationError
+from scoring.errors import ConfigurationError
 
 Dialect = Literal["duckdb", "athena"]
 

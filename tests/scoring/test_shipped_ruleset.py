@@ -10,10 +10,10 @@ import datetime as dt
 
 import duckdb
 
-from dq.engine import run_rules
-from dq.executor import DuckDbExecutor
-from dq.model import RunSettings
-from dq.ruleset_loader import parse_ruleset, read_ruleset_text
+from scoring.engine import run_rules
+from scoring.executor import DuckDbExecutor
+from scoring.model import RunSettings
+from scoring.ruleset_loader import parse_ruleset, read_ruleset_text
 
 SCORES_FLAGS_OFF = {1: 100.0, 2: 23.75, 3: 28.75, 4: 87.5, 5: 56.25}
 MIN_FAILED = {1: 0, 2: 6, 3: 6, 4: 2, 5: 1}

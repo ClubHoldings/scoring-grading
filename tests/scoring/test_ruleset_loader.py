@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from dq.errors import ConfigurationError, UnknownRulesetError
-from dq.model import DIMENSION_WEIGHTS, Dimension
-from dq.ruleset_loader import load_ruleset, parse_ruleset
+from scoring.errors import ConfigurationError, UnknownRulesetError
+from scoring.model import DIMENSION_WEIGHTS, Dimension
+from scoring.ruleset_loader import load_ruleset, parse_ruleset
 
 GOOD = """
 version = "v0.9"

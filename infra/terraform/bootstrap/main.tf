@@ -21,7 +21,7 @@ provider "aws" {
 locals {
   state_bucket = "${var.project}-tfstate-${var.environment}-${var.account_id}"
   # prod applies only from the prod branch behind approval; dev from the dev branch.
-  plan_subjects = ["repo:${var.github_repo}:pull_request", "repo:${var.github_repo}:ref:refs/heads/*", "repo:${var.github_repo}:environment:*"]
+  plan_subjects = ["${var.github_subject_prefix}:pull_request", "${var.github_subject_prefix}:ref:refs/heads/*", "${var.github_subject_prefix}:environment:*"]
 }
 
 resource "aws_s3_bucket" "state" {
@@ -77,15 +77,15 @@ resource "aws_s3_bucket_policy" "state" {
 }
 
 module "deploy_roles" {
-  source               = "../modules/github_deploy_roles"
-  project              = var.project
-  environment          = var.environment
-  account_id           = var.account_id
-  github_repo          = var.github_repo
-  apply_environment    = var.environment
-  plan_subjects        = local.plan_subjects
-  state_bucket_arn     = aws_s3_bucket.state.arn
-  create_oidc_provider = var.create_oidc_provider
+  source                = "../modules/github_deploy_roles"
+  project               = var.project
+  environment           = var.environment
+  account_id            = var.account_id
+  github_subject_prefix = var.github_subject_prefix
+  apply_environment     = var.environment
+  plan_subjects         = local.plan_subjects
+  state_bucket_arn      = aws_s3_bucket.state.arn
+  create_oidc_provider  = var.create_oidc_provider
 }
 
 output "state_bucket" {

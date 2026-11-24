@@ -49,7 +49,7 @@ data "aws_iam_policy_document" "apply_trust" {
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_url}:sub"
-      values   = ["repo:${var.github_repo}:environment:${var.apply_environment}"]
+      values   = ["${var.github_subject_prefix}:environment:${var.apply_environment}"]
     }
   }
 }

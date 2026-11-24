@@ -32,9 +32,10 @@ variable "cost_centre" {
   description = "Cost centre for the cost_centre tag."
 }
 
-variable "github_repo" {
-  type    = string
-  default = "ClubHoldings/scoring-grading"
+variable "github_subject_prefix" {
+  type        = string
+  default     = "repo:ClubHoldings@1420122/scoring-grading@1469854041"
+  description = "OIDC subject prefix of ClubHoldings/scoring-grading (numeric IDs are public, not secret). Changes if the repo is recreated or transferred."
 }
 
 variable "create_oidc_provider" {

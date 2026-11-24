@@ -13,9 +13,9 @@ variable "account_id" {
   description = "AWS account ID."
 }
 
-variable "github_repo" {
+variable "github_subject_prefix" {
   type        = string
-  description = "owner/name of the repository allowed to assume the roles."
+  description = "OIDC subject prefix of the repository, e.g. repo:Owner@123/name@456. GitHub embeds numeric owner and repo IDs when the immutable-subject setting is on (check: gh api repos/<owner>/<repo>/actions/oidc/customization/sub)."
 }
 
 variable "apply_environment" {

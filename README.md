@@ -18,6 +18,8 @@ Infra stories (dev account only; the prod account does not exist yet):
 | QDEV-888 Bedrock access | Blocked: Anthropic models fail in the dev account (use case form not submitted, Claude 5.x not enabled), quota is 0. Region: `us-west-2`. |
 
 Open items:
+- Dev bootstrap re-apply: apply role was widened for the Datadog forwarder (SG-I5). Bootstrap is applied by hand, so the change is not live in AWS until then.
+- Datadog (SG-I5): integration role must be named `scoring-grading-<env>-datadog-integration` and the forwarder CloudFormation stack `scoring-grading-<env>-datadog-forwarder`, to fit the apply role scope. Datadog API/app keys go in GitHub Environment secrets only.
 - Real `cost_centre` value (tags say `TBD`).
 - PR `dev` -> `stage` is open and deliberately not merged yet.
 - Prod account: bootstrap it, then set `AWS_ACCOUNT_ID` on the `prod` and `prod-plan` GitHub Environments.
@@ -63,7 +65,7 @@ the provider refuses to run against any other account.
 | Path | Purpose |
 |---|---|
 | `infra/terraform/bootstrap/` | One-time per account, applied by a human: state bucket, GitHub OIDC provider, deploy roles. Local state (gitignored). |
-| `infra/terraform/modules/github_deploy_roles/` | OIDC plan role (read-only) and apply role (scoped to `scoring-grading-<env>-*`). |
+| `infra/terraform/modules/github_deploy_roles/` | OIDC plan role (read-only) and apply role. Apply role allows S3, IAM, KMS, Lambda, Logs, Secrets Manager/SSM and CloudFormation, only on names starting `scoring-grading-<env>-` (Lambda, Logs, Secrets, SSM and CloudFormation added for the Datadog forwarder, SG-I5). |
 | `infra/terraform/modules/photo_bucket/` | Photo bucket, KMS key, lifecycle, copy-job role, read policy. |
 | `infra/terraform/live/dev`, `live/prod` | Per-environment roots; remote state in S3 with native lockfile. |
 | `.github/workflows/terraform.yml` | PR: fmt, validate, test, plan. Push to `dev`: apply to dev. Push to `prod`: apply to prod behind approval. `stage`: plan only against prod. |

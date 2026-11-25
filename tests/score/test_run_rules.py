@@ -45,20 +45,20 @@ def test_not_applicable_rule_leaves_the_home_total_and_is_recorded(
         ruleset=parse_ruleset(text + coords_rule),
     )
 
-    # Home 5 is exempt: 5 points available, 5 earned. Homes 3 and 4 fail coordinates only.
+    # Home 5 is exempt: 5 points available, 0 lost. Homes 3 and 4 fail coordinates only.
     scores = {
         r[0]: r[1:]
         for r in executor.fetch(
-            "SELECT property_uid, points_available, points_earned, score, min_req_failed "
+            "SELECT property_uid, points_available, points_lost, score, min_req_failed "
             "FROM results.home_score"
         )
     }
     assert scores == {
-        1: (10, 10, 100.0, 0),
-        2: (10, 0, 0.0, 1),
+        1: (10, 0, 100.0, 0),
+        2: (10, 10, 0.0, 1),
         3: (10, 5, 50.0, 1),
         4: (10, 5, 50.0, 1),
-        5: (5, 5, 100.0, 0),
+        5: (5, 0, 100.0, 0),
     }
     na = executor.fetch("SELECT property_uid, rule_id, points FROM results.rule_not_applicable")
     assert na == [(5, "LOC_COORDS", 5)]
@@ -105,3 +105,19 @@ def test_run_row_records_how_the_run_was_made(
         "points_available FROM results.run"
     )
     assert row == [(result.run_id, "v0.9", "nightly", as_of, "", 5, 5)]
+
+
+def test_run_and_ruleset_rows_carry_the_run_time(
+    executor: DuckDbExecutor, as_of: dt.date, photo_rule: str
+) -> None:
+    at = dt.datetime(2026, 11, 24, 10, 30, 0)
+
+    run_rules(
+        executor,
+        RunSettings(ruleset_version="v0.9", as_of=as_of),
+        ruleset=parse_ruleset(photo_rule),
+        now=lambda: at,
+    )
+
+    assert executor.fetch("SELECT run_at FROM results.run") == [(at,)]
+    assert executor.fetch("SELECT created_at FROM results.ruleset") == [(at,)]

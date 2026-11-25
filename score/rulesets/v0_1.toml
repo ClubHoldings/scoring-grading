@@ -14,8 +14,9 @@ note = "Draft. Seven dimensions on tables already in the lake; address, fee and 
 
 # Property status codes that make up the scored population.
 sellable_statuses = ["AVAILABLE", "AVAILABLE_RENTAL"]
-# Partner source codes exempt from coordinates and flagged. Set the real codes in a new version.
-coords_exempt_sources = []
+# Partner sources exempt from coordinates and flagged: their homes have none yet. Exempt for now,
+# required before a home goes on a map or to a channel. Remove the code in a new version then.
+coords_exempt_sources = ["PULSE_EXPERIENTIAL"]
 
 # ---- Media (20) ----
 [[rule]]

@@ -13,7 +13,7 @@ import duckdb
 from score.engine import run_rules
 from score.executor import DuckDbExecutor
 from score.model import RunSettings
-from score.ruleset_loader import parse_ruleset, read_ruleset_text
+from score.ruleset_loader import load_ruleset
 
 SCORES_FLAGS_OFF = {1: 100.0, 2: 23.75, 3: 28.75, 4: 87.5, 5: 56.25}
 MIN_FAILED = {1: 0, 2: 6, 3: 6, 4: 2, 5: 1}
@@ -70,15 +70,19 @@ def test_address_and_fee_flags_add_their_rules(executor: DuckDbExecutor, as_of: 
     assert executor.fetch("SELECT enabled_flags FROM results.run") == [("address,fees",)]
 
 
-def test_exempt_source_is_flagged_not_applicable_for_coordinates(
-    executor: DuckDbExecutor, as_of: dt.date
+def test_shipped_ruleset_exempts_its_listed_source_from_coordinates(
+    executor: DuckDbExecutor, as_of: dt.date, con: duckdb.DuckDBPyConnection
 ) -> None:
-    text = read_ruleset_text("v0.1")
-    exempt = parse_ruleset(
-        text.replace("coords_exempt_sources = []", 'coords_exempt_sources = ["SRC_EXEMPT"]')
+    exempt_codes = load_ruleset("v0.1").coords_exempt_sources
+    assert exempt_codes  # the business decision: exempt for now, flagged
+    # Home 5 has no coordinates. Give it the exempt partner source.
+    con.execute("INSERT INTO silver.property_source VALUES (?)", [exempt_codes[0]])
+    con.execute(
+        "UPDATE silver.property SET property_source_ucode = ? WHERE property_uid = 5",
+        [exempt_codes[0]],
     )
 
-    run_rules(executor, RunSettings("v0.1", as_of), ruleset=exempt)
+    run_rules(executor, RunSettings("v0.1", as_of))
 
     assert executor.fetch(
         "SELECT property_uid, rule_id, points FROM results.rule_not_applicable"

@@ -1,0 +1,135 @@
+name: terraform
+
+# Branch model: dev -> stage -> prod.
+#   PR into dev    : fmt, validate, tests, plan against the dev account
+#   push to dev    : apply to dev account (GitHub Environment "dev")
+#   PR into stage / prod, push to stage : plan against the prod account (read-only role, no apply)
+#   push to prod   : apply to prod account, paused until a required reviewer approves
+#                    GitHub Environment "prod" (configure reviewers in repo settings)
+# Setup per GitHub Environment (dev, prod, prod-plan): variables AWS_ACCOUNT_ID, AWS_REGION,
+# TF_OWNER, TF_COST_CENTRE. No secrets: AWS access is OIDC only.
+
+on:
+  pull_request:
+    branches: [dev, stage, prod]
+    paths: ["infra/**", ".github/workflows/terraform.yml"]
+  push:
+    branches: [dev, stage, prod]
+    paths: ["infra/**", ".github/workflows/terraform.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-${{ github.base_ref || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+      - name: fmt
+        run: terraform fmt -check -recursive infra/terraform
+      - name: validate and test modules
+        run: |
+          for d in infra/terraform/modules/* infra/terraform/bootstrap infra/terraform/live/*; do
+            (cd "$d" && terraform init -backend=false -input=false >/dev/null && terraform validate)
+          done
+          for d in infra/terraform/modules/*; do
+            if [ -d "$d/tests" ]; then (cd "$d" && terraform test); fi
+          done
+
+  plan:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      TARGET: ${{ (github.base_ref || github.ref_name) == 'dev' && 'dev' || 'prod' }}
+    environment: ${{ (github.base_ref || github.ref_name) == 'dev' && 'dev' || 'prod-plan' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check account is configured
+        id: cfg
+        run: |
+          if [ -z "${{ vars.AWS_ACCOUNT_ID }}" ]; then
+            echo "::notice::AWS_ACCOUNT_ID not set for this environment yet; skipping."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: hashicorp/setup-terraform@v3
+        if: steps.cfg.outputs.ready == 'true'
+        with:
+          terraform_version: 1.15.8
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: steps.cfg.outputs.ready == 'true'
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/scoring-grading-${{ env.TARGET }}-tf-plan
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: init and plan
+        if: steps.cfg.outputs.ready == 'true'
+        working-directory: infra/terraform/live/${{ env.TARGET }}
+        env:
+          TF_VAR_account_id: ${{ vars.AWS_ACCOUNT_ID }}
+          TF_VAR_owner: ${{ vars.TF_OWNER }}
+          TF_VAR_cost_centre: ${{ vars.TF_COST_CENTRE }}
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=scoring-grading-tfstate-${TARGET}-${{ vars.AWS_ACCOUNT_ID }}" \
+            -backend-config="region=${{ vars.AWS_REGION }}"
+          terraform plan -input=false -lock-timeout=5m -out=tfplan
+          terraform show -no-color tfplan > plan.txt
+      - uses: actions/upload-artifact@v4
+        if: steps.cfg.outputs.ready == 'true'
+        with:
+          name: plan-${{ env.TARGET }}
+          path: infra/terraform/live/${{ env.TARGET }}/plan.txt
+
+  apply:
+    # Only pushes to dev (dev account) and prod (prod account, approval-gated). stage never applies.
+    if: github.event_name == 'push' && (github.ref_name == 'dev' || github.ref_name == 'prod')
+    needs: plan
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    environment: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check account is configured
+        id: cfg
+        run: |
+          if [ -z "${{ vars.AWS_ACCOUNT_ID }}" ]; then
+            echo "::notice::AWS_ACCOUNT_ID not set for this environment yet; skipping."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: hashicorp/setup-terraform@v3
+        if: steps.cfg.outputs.ready == 'true'
+        with:
+          terraform_version: 1.15.8
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: steps.cfg.outputs.ready == 'true'
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/scoring-grading-${{ github.ref_name }}-tf-apply
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: init, plan and apply
+        if: steps.cfg.outputs.ready == 'true'
+        working-directory: infra/terraform/live/${{ github.ref_name }}
+        env:
+          TF_VAR_account_id: ${{ vars.AWS_ACCOUNT_ID }}
+          TF_VAR_owner: ${{ vars.TF_OWNER }}
+          TF_VAR_cost_centre: ${{ vars.TF_COST_CENTRE }}
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=scoring-grading-tfstate-${{ github.ref_name }}-${{ vars.AWS_ACCOUNT_ID }}" \
+            -backend-config="region=${{ vars.AWS_REGION }}"
+          terraform plan -input=false -lock-timeout=5m -out=tfplan
+          terraform apply -input=false tfplan

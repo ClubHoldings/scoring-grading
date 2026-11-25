@@ -1,0 +1,39 @@
+name: Open dev to stage PR
+
+# Every push to dev opens or updates a PR into stage. Merge to stage runs a plan against the prod account (no apply).
+# Merging is a manual click: stage is branch-protected, no auto-merge.
+
+on:
+  push:
+    branches: [dev]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  open-or-update-pr:
+    name: Open or update dev -> stage PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Open PR if none exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          existing="$(gh pr list --head dev --base stage --json number --jq '.[0].number')"
+          if [[ -n "$existing" ]]; then
+            echo "PR #$existing already open; this push updated it."
+            exit 0
+          fi
+          commits="$(git log origin/stage..origin/dev --pretty=format:'- %s (%h)')"
+          if [[ -z "$commits" ]]; then
+            echo "Nothing ahead of stage, no PR needed."
+            exit 0
+          fi
+          gh pr create --head dev --base stage \
+            --title "dev -> stage" \
+            --body "$(printf '## Commits\n%s\n\nMerge to stage runs a plan against the prod account (no apply).' "$commits")"
